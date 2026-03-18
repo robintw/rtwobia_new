@@ -8,12 +8,12 @@ from collections import OrderedDict
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
+    QApplication,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -29,9 +29,7 @@ from qgis.core import (
     QgsSimpleFillSymbolLayer,
     QgsSingleSymbolRenderer,
     QgsSymbol,
-    QgsTask,
     QgsVectorLayer,
-    QgsApplication,
     Qgis,
 )
 from qgis.PyQt.QtCore import QVariant
@@ -62,7 +60,6 @@ class SegmentationPanel(QWidget):
                 Qgis.Critical)
 
     def _setup_ui(self):
-        log("_setup_ui starting")
         layout = QVBoxLayout()
 
         # Input layer selector
@@ -88,7 +85,7 @@ class SegmentationPanel(QWidget):
         self._params_container = QVBoxLayout()
         layout.addLayout(self._params_container)
 
-        # Buttons — connect BEFORE anything that might fail
+        # Buttons
         btn_layout = QHBoxLayout()
         self._preview_btn = QPushButton("Preview")
         self._preview_btn.setToolTip(
@@ -102,25 +99,18 @@ class SegmentationPanel(QWidget):
         btn_layout.addWidget(self._run_btn)
         layout.addLayout(btn_layout)
 
-        # Progress
-        self._progress = QProgressBar()
-        self._progress.setVisible(False)
-        layout.addWidget(self._progress)
-
         # Status
         self._status = QLabel("")
         layout.addWidget(self._status)
 
         layout.addStretch()
         self.setLayout(layout)
-        log("_setup_ui layout done, connecting signals and loading params")
 
         # Connect algorithm change AFTER layout is complete
         self._method_combo.currentTextChanged.connect(self._on_method_changed)
 
         # Initialize parameter panel for default method
         self._on_method_changed(self._method_combo.currentText())
-        log("_setup_ui complete")
 
     def _on_method_changed(self, method: str):
         """Rebuild the parameter panel for the selected algorithm."""
@@ -130,39 +120,32 @@ class SegmentationPanel(QWidget):
             log("Cannot import geobia.segmentation — is it installed?", Qgis.Warning)
             return
 
-        # Remove old parameter group
         if self._param_group is not None:
             self._params_container.removeWidget(self._param_group)
             self._param_group.deleteLater()
             self._param_group = None
 
-        # Build new widgets from the algorithm's JSON Schema
         cls = _REGISTRY.get(method)
         if cls is None:
-            log(f"Method '{method}' not found in registry", Qgis.Warning)
             return
 
         schema = cls.get_param_schema()
         self._param_widgets = build_param_widgets(schema)
         self._param_group = create_param_group("Parameters", self._param_widgets)
         self._params_container.addWidget(self._param_group)
-        log(f"Loaded params for {method}: {list(self._param_widgets.keys())}")
 
     def _get_input_layer(self):
         layer = self._layer_combo.currentLayer()
         if layer is None:
             QMessageBox.warning(self, "GeoOBIA", "Select an input raster layer.")
-            log("No input layer selected", Qgis.Warning)
         return layer
 
     def _collect_params(self) -> dict:
-        """Collect algorithm parameters from the dynamic widgets."""
         params = collect_param_values(self._param_widgets)
-        # Remove None values
         return {k: v for k, v in params.items() if v is not None}
 
     def _on_preview(self):
-        """Segment a small region matching the current canvas extent."""
+        """Segment the current canvas extent and show outlines."""
         log("Preview button clicked")
         layer = self._get_input_layer()
         if layer is None:
@@ -170,20 +153,86 @@ class SegmentationPanel(QWidget):
 
         method = self._method_combo.currentText()
         params = self._collect_params()
-        log(f"Preview: method={method}, params={params}, source={layer.source()}")
+        log(f"Preview: method={method}, params={params}")
 
-        self._progress.setVisible(True)
-        self._progress.setValue(0)
-        self._preview_btn.setEnabled(False)
         self._status.setText("Running preview...")
+        self._preview_btn.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
 
-        task = _PreviewTask(
-            self.iface, self.state, layer, method, params, self._on_task_done)
-        QgsApplication.taskManager().addTask(task)
-        log("Preview task submitted to task manager")
+        try:
+            import rasterio
+            from rasterio.windows import from_bounds
+            from geobia.segmentation import segment
+            from geobia.utils.vectorize import vectorize_labels
+
+            source = layer.source()
+            with rasterio.open(source) as ds:
+                canvas = self.iface.mapCanvas()
+                extent = canvas.extent()
+                log(f"Canvas extent: {extent.toString()}")
+                log(f"Raster bounds: {ds.bounds}, size: {ds.width}x{ds.height}")
+
+                try:
+                    window = from_bounds(
+                        extent.xMinimum(), extent.yMinimum(),
+                        extent.xMaximum(), extent.yMaximum(),
+                        transform=ds.transform,
+                    )
+                except Exception:
+                    window = rasterio.windows.Window(0, 0, ds.width, ds.height)
+
+                window = window.intersection(
+                    rasterio.windows.Window(0, 0, ds.width, ds.height))
+
+                # Limit preview size
+                max_px = 512
+                col_off = max(0, int(window.col_off))
+                row_off = max(0, int(window.row_off))
+                win_w = min(int(window.width), max_px)
+                win_h = min(int(window.height), max_px)
+                if win_w <= 0 or win_h <= 0:
+                    self._status.setText("Preview region doesn't overlap the raster.")
+                    return
+                window = rasterio.windows.Window(col_off, row_off, win_w, win_h)
+                log(f"Preview window: {window}")
+
+                image = ds.read(window=window)
+                meta = {
+                    "crs": ds.crs,
+                    "transform": ds.window_transform(window),
+                    "nodata": ds.nodata,
+                }
+
+            log(f"Preview image: shape={image.shape}, dtype={image.dtype}")
+            labels = segment(image, method=method, **params)
+            n_segments = int(labels.max())
+            log(f"Preview: {n_segments} segments")
+
+            crs = meta.get("crs")
+            gdf = vectorize_labels(labels, meta["transform"], crs)
+            log(f"Vectorized {len(gdf)} polygons")
+
+            name = f"Preview ({method})"
+            _remove_layers_by_name(name)
+            vlayer = _create_outline_layer(name, crs, gdf)
+            QgsProject.instance().addMapLayer(vlayer)
+            self.iface.mapCanvas().refresh()
+
+            self._status.setText(f"Preview: {n_segments} segments")
+            log(f"Preview layer '{name}' added to map")
+
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Preview FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Preview failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA", f"Preview failed:\n{msg}")
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._preview_btn.setEnabled(True)
 
     def _on_run(self):
-        """Segment the full image."""
+        """Segment the full image and show outlines."""
         log("Run button clicked")
         layer = self._get_input_layer()
         if layer is None:
@@ -191,297 +240,116 @@ class SegmentationPanel(QWidget):
 
         method = self._method_combo.currentText()
         params = self._collect_params()
-        log(f"Run: method={method}, params={params}, source={layer.source()}")
+        log(f"Run: method={method}, params={params}")
 
-        self._progress.setVisible(True)
-        self._progress.setValue(0)
-        self._run_btn.setEnabled(False)
         self._status.setText("Segmenting full image...")
+        self._run_btn.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
 
-        task = _SegmentTask(
-            self.iface, self.state, layer, method, params, self._on_task_done)
-        QgsApplication.taskManager().addTask(task)
-        log("Segment task submitted to task manager")
-
-    def _on_task_done(self, success: bool, message: str):
-        """Called when a segmentation task finishes."""
-        log(f"Task done: success={success}, message={message}")
-        self._progress.setVisible(False)
-        self._run_btn.setEnabled(True)
-        self._preview_btn.setEnabled(True)
-        self._status.setText(message)
-        if not success:
-            QMessageBox.warning(self, "GeoOBIA", message)
-
-
-class _SegmentTask(QgsTask):
-    """Run segmentation in a background thread."""
-
-    def __init__(self, iface, state, layer, method, params, callback):
-        super().__init__(f"GeoOBIA: Segment ({method})")
-        self.iface = iface
-        self.state = state
-        self.layer_source = layer.source()
-        self.layer = layer
-        self.method = method
-        self.params = params
-        self.callback = callback
-        self.output_path = None
-        self.n_segments = 0
-        self.error_msg = ""
-        # Vectorized polygons built in run(), used in finished()
-        self._wkt_features = []  # list of (segment_id, wkt)
-        self._crs_str = None
-
-    def run(self):
-        log(f"SegmentTask.run() started: method={self.method}, source={self.layer_source}")
         try:
             from geobia.io.raster import read_raster, write_raster
             from geobia.segmentation import segment
             from geobia.utils.vectorize import vectorize_labels
 
-            self.setProgress(5)
-            log("Reading raster...")
-            image, meta = read_raster(self.layer_source)
-            log(f"Image shape: {image.shape}, dtype: {image.dtype}")
+            source = layer.source()
+            log(f"Reading {source}...")
+            image, meta = read_raster(source)
+            log(f"Image: shape={image.shape}, dtype={image.dtype}")
 
-            self.setProgress(10)
-            log(f"Segmenting with {self.method}, params={self.params}...")
-            labels = segment(image, method=self.method, **self.params)
+            log("Segmenting...")
+            labels = segment(image, method=method, **params)
+            n_segments = int(labels.max())
+            log(f"Segmentation done: {n_segments} segments")
 
-            self.setProgress(70)
-            self.n_segments = int(labels.max())
-            log(f"Segmentation done: {self.n_segments} segments")
-
-            # Write raster labels to temp file
-            fd, self.output_path = tempfile.mkstemp(
+            # Save raster labels
+            fd, output_path = tempfile.mkstemp(
                 suffix="_segments.tif",
-                prefix=f"geobia_{self.method}_",
-                dir=os.path.dirname(self.layer_source) or tempfile.gettempdir(),
+                prefix=f"geobia_{method}_",
+                dir=os.path.dirname(source) or tempfile.gettempdir(),
             )
             os.close(fd)
-            write_raster(self.output_path, labels, meta, dtype="int32")
-            log(f"Wrote segments raster to {self.output_path}")
+            write_raster(output_path, labels, meta, dtype="int32")
+            log(f"Wrote labels raster: {output_path}")
 
-            # Vectorize for display (must happen in worker thread, not GUI thread)
-            self.setProgress(80)
-            log("Vectorizing segments for outline display...")
-            crs = meta.get("crs")
-            self._crs_str = str(crs) if crs else "EPSG:4326"
-            gdf = vectorize_labels(labels, meta["transform"], crs)
-            self._wkt_features = [
-                (int(row["segment_id"]), row.geometry.wkt)
-                for _, row in gdf.iterrows()
-            ]
-            log(f"Vectorized {len(self._wkt_features)} polygons")
-
-            # Stash for other panels
+            # Store in state for other panels
             self.state.labels_array = labels
             self.state.meta = meta
-            self.state.input_layer = self.layer
+            self.state.input_layer = layer
 
-            self.setProgress(100)
-            return True
-        except Exception as e:
-            self.error_msg = str(e)
-            log(f"SegmentTask.run() FAILED:\n{traceback.format_exc()}", Qgis.Critical)
-            return False
-
-    def finished(self, result):
-        log(f"SegmentTask.finished() called: result={result}")
-        if result:
-            name = f"Segments ({self.method})"
-            # Remove previous segment outline layers with same name
-            for lyr in QgsProject.instance().mapLayersByName(name):
-                QgsProject.instance().removeMapLayer(lyr.id())
-
-            # Also add raster labels layer (hidden — used by other panels)
-            rlayer = QgsRasterLayer(self.output_path, f"{name} [raster]")
+            # Add raster labels layer (hidden — used by classification panel)
+            rlayer = QgsRasterLayer(output_path, f"Segments [raster]")
             if rlayer.isValid():
                 QgsProject.instance().addMapLayer(rlayer, addToLegend=False)
                 self.state.labels_layer = rlayer
 
-            # Add vector outline layer
-            vlayer = _create_outline_layer(
-                name, self._crs_str, self._wkt_features)
-            if vlayer:
-                QgsProject.instance().addMapLayer(vlayer)
-                log(f"Added outline layer '{name}' with {len(self._wkt_features)} features")
-
-            self.callback(True, f"{self.n_segments} segments created.")
-        else:
-            self.callback(False, f"Segmentation failed: {self.error_msg}")
-
-
-class _PreviewTask(QgsTask):
-    """Run segmentation on the visible canvas extent only."""
-
-    def __init__(self, iface, state, layer, method, params, callback):
-        super().__init__(f"GeoOBIA: Preview ({method})")
-        self.iface = iface
-        self.state = state
-        self.layer = layer
-        self.layer_source = layer.source()
-        self.method = method
-        self.params = params
-        self.callback = callback
-        self.n_segments = 0
-        self.error_msg = ""
-        self._wkt_features = []
-        self._crs_str = None
-
-        # Capture canvas extent on the main thread
-        canvas = iface.mapCanvas()
-        self.canvas_extent = canvas.extent()
-        self.canvas_crs = canvas.mapSettings().destinationCrs()
-        log(f"Preview extent: {self.canvas_extent.toString()}")
-
-    def run(self):
-        log(f"PreviewTask.run() started: method={self.method}, source={self.layer_source}")
-        try:
-            import rasterio
-            from rasterio.windows import from_bounds
-            from geobia.segmentation import segment
-            from geobia.utils.vectorize import vectorize_labels
-
-            self.setProgress(5)
-
-            with rasterio.open(self.layer_source) as ds:
-                log(f"Raster bounds: {ds.bounds}, size: {ds.width}x{ds.height}")
-                # Transform canvas extent to raster pixel window
-                try:
-                    window = from_bounds(
-                        self.canvas_extent.xMinimum(),
-                        self.canvas_extent.yMinimum(),
-                        self.canvas_extent.xMaximum(),
-                        self.canvas_extent.yMaximum(),
-                        transform=ds.transform,
-                    )
-                    log(f"Window from bounds: {window}")
-                except Exception as e:
-                    log(f"from_bounds failed ({e}), using full image", Qgis.Warning)
-                    window = rasterio.windows.Window(0, 0, ds.width, ds.height)
-
-                # Clip to image bounds and limit preview size
-                window = window.intersection(
-                    rasterio.windows.Window(0, 0, ds.width, ds.height))
-
-                max_preview = 512
-                col_off = int(window.col_off)
-                row_off = int(window.row_off)
-                win_w = min(int(window.width), max_preview)
-                win_h = min(int(window.height), max_preview)
-                window = rasterio.windows.Window(col_off, row_off, win_w, win_h)
-                log(f"Final preview window: {window}")
-
-                image = ds.read(window=window)
-                meta = {
-                    "crs": ds.crs,
-                    "transform": ds.window_transform(window),
-                    "nodata": ds.nodata,
-                    "width": win_w,
-                    "height": win_h,
-                }
-
-            log(f"Preview image shape: {image.shape}, dtype: {image.dtype}")
-
-            if image.size == 0:
-                self.error_msg = "Preview region is empty."
-                log("Preview region is empty", Qgis.Warning)
-                return False
-
-            self.setProgress(20)
-            log(f"Segmenting preview with {self.method}, params={self.params}...")
-            labels = segment(image, method=self.method, **self.params)
-
-            self.setProgress(70)
-            self.n_segments = int(labels.max())
-            log(f"Preview segmentation done: {self.n_segments} segments")
-
-            # Vectorize for outline display
-            self.setProgress(80)
-            log("Vectorizing preview segments...")
+            # Vectorize and display outlines
+            log("Vectorizing...")
             crs = meta.get("crs")
-            self._crs_str = str(crs) if crs else "EPSG:4326"
             gdf = vectorize_labels(labels, meta["transform"], crs)
-            self._wkt_features = [
-                (int(row["segment_id"]), row.geometry.wkt)
-                for _, row in gdf.iterrows()
-            ]
-            log(f"Vectorized {len(self._wkt_features)} preview polygons")
+            log(f"Vectorized {len(gdf)} polygons")
 
-            # Stash labels for other panels
-            self.state.labels_array = labels
-            self.state.meta = meta
+            name = f"Segments ({method})"
+            _remove_layers_by_name(name)
+            vlayer = _create_outline_layer(name, crs, gdf)
+            QgsProject.instance().addMapLayer(vlayer)
+            self.iface.mapCanvas().refresh()
 
-            self.setProgress(100)
-            return True
-        except Exception as e:
-            self.error_msg = str(e)
-            log(f"PreviewTask.run() FAILED:\n{traceback.format_exc()}", Qgis.Critical)
-            return False
+            self._status.setText(f"{n_segments} segments created.")
+            log(f"Segment layer '{name}' added to map")
 
-    def finished(self, result):
-        log(f"PreviewTask.finished() called: result={result}")
-        if result:
-            name = f"Preview ({self.method})"
-            # Remove previous preview layers
-            for lyr in QgsProject.instance().mapLayersByName(name):
-                QgsProject.instance().removeMapLayer(lyr.id())
-
-            vlayer = _create_outline_layer(
-                name, self._crs_str, self._wkt_features)
-            if vlayer:
-                QgsProject.instance().addMapLayer(vlayer)
-                log(f"Added preview outline layer '{name}'")
-
-            self.callback(True, f"Preview: {self.n_segments} segments")
-        else:
-            self.callback(False, f"Preview failed: {self.error_msg}")
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Run FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Segmentation failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA", f"Segmentation failed:\n{msg}")
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._run_btn.setEnabled(True)
 
 
-def _create_outline_layer(name, crs_str, wkt_features):
-    """Create a memory vector layer with bright yellow outlines from WKT geometries.
+def _remove_layers_by_name(name):
+    """Remove all map layers with the given name."""
+    for lyr in QgsProject.instance().mapLayersByName(name):
+        QgsProject.instance().removeMapLayer(lyr.id())
+
+
+def _create_outline_layer(name, crs, gdf):
+    """Create a memory vector layer with bright yellow outlines.
 
     Args:
-        name: Layer name for the QGIS legend.
-        crs_str: CRS string like "EPSG:32633".
-        wkt_features: list of (segment_id, wkt_string) tuples.
+        name: Layer name.
+        crs: rasterio CRS object or None.
+        gdf: GeoDataFrame with segment_id and geometry columns.
 
     Returns:
-        QgsVectorLayer or None on failure.
+        QgsVectorLayer ready to add to the project.
     """
-    try:
-        vlayer = QgsVectorLayer(
-            f"Polygon?crs={crs_str}", name, "memory")
-        provider = vlayer.dataProvider()
-        provider.addAttributes([QgsField("segment_id", QVariant.Int)])
-        vlayer.updateFields()
+    crs_str = str(crs) if crs else "EPSG:4326"
+    vlayer = QgsVectorLayer(f"Polygon?crs={crs_str}", name, "memory")
+    provider = vlayer.dataProvider()
+    provider.addAttributes([QgsField("segment_id", QVariant.Int)])
+    vlayer.updateFields()
 
-        features = []
-        for seg_id, wkt in wkt_features:
-            feat = QgsFeature()
-            feat.setGeometry(QgsGeometry.fromWkt(wkt))
-            feat.setAttributes([seg_id])
-            features.append(feat)
+    features = []
+    for _, row in gdf.iterrows():
+        feat = QgsFeature()
+        feat.setGeometry(QgsGeometry.fromWkt(row.geometry.wkt))
+        feat.setAttributes([int(row["segment_id"])])
+        features.append(feat)
 
-        provider.addFeatures(features)
-        vlayer.updateExtents()
+    provider.addFeatures(features)
+    vlayer.updateExtents()
 
-        # Bright yellow outline, no fill
-        symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
-        symbol.deleteSymbolLayer(0)
-        outline = QgsSimpleFillSymbolLayer()
-        outline.setFillColor(QColor(0, 0, 0, 0))       # transparent fill
-        outline.setStrokeColor(QColor(255, 255, 0))     # bright yellow
-        outline.setStrokeWidth(0.5)
-        symbol.appendSymbolLayer(outline)
+    # Bright yellow outline, fully transparent fill
+    symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
+    symbol.deleteSymbolLayer(0)
+    outline = QgsSimpleFillSymbolLayer()
+    outline.setFillColor(QColor(0, 0, 0, 0))
+    outline.setStrokeColor(QColor(255, 255, 0))
+    outline.setStrokeWidth(0.5)
+    symbol.appendSymbolLayer(outline)
+    vlayer.setRenderer(QgsSingleSymbolRenderer(symbol))
 
-        vlayer.setRenderer(QgsSingleSymbolRenderer(symbol))
-        vlayer.triggerRepaint()
-
-        log(f"Created outline layer '{name}' with {len(features)} features")
-        return vlayer
-    except Exception:
-        log(f"_create_outline_layer FAILED:\n{traceback.format_exc()}", Qgis.Critical)
-        return None
+    log(f"Created outline layer '{name}': {len(features)} features, crs={crs_str}")
+    return vlayer
