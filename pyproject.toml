@@ -16,7 +16,11 @@ dependencies = [
     "click>=8.1",
     "pyarrow>=14.0",
     "joblib>=1.3",
+    "numba>=0.60",
 ]
+
+[project.optional-dependencies]
+sam = ["segment-geospatial>=0.11"]
 
 [project.scripts]
 geobia = "geobia.cli:cli"
@@ -29,4 +33,12 @@ build-backend = "uv_build"
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
+    "pytest-benchmark>=4.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow-running",
+    "spot_image: marks tests that require the SPOT_ROI.tif test image",
+    "benchmark: marks benchmark tests",
 ]

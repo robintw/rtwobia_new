@@ -7,11 +7,20 @@ import numpy as np
 from geobia.segmentation.base import BaseSegmenter
 from geobia.segmentation.slic import SLICSegmenter
 from geobia.segmentation.felzenszwalb import FelzenszwalbSegmenter
+from geobia.segmentation.shepherd import ShepherdSegmenter
 
 _REGISTRY: dict[str, type[BaseSegmenter]] = {
     "slic": SLICSegmenter,
     "felzenszwalb": FelzenszwalbSegmenter,
+    "shepherd": ShepherdSegmenter,
 }
+
+# Register SAM if segment-geospatial is installed
+try:
+    from geobia.segmentation.sam import SAMSegmenter
+    _REGISTRY["sam"] = SAMSegmenter
+except ImportError:
+    pass
 
 
 def create(method: str, **params) -> BaseSegmenter:
@@ -143,6 +152,7 @@ __all__ = [
     "BaseSegmenter",
     "SLICSegmenter",
     "FelzenszwalbSegmenter",
+    "ShepherdSegmenter",
     "create",
     "segment",
     "segment_tiled",

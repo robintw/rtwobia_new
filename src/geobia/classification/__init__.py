@@ -28,7 +28,8 @@ def classify(
     Returns:
         Series with predicted labels (segment_id index).
     """
-    if method in ("kmeans",):
+    unsupervised_methods = ("kmeans", "gmm", "dbscan")
+    if method in unsupervised_methods:
         clf = UnsupervisedClassifier(algorithm=method, **params)
         clf.fit(features)
     else:

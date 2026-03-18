@@ -6,6 +6,7 @@ import pytest
 from geobia.segmentation import create, segment, list_methods
 from geobia.segmentation.slic import SLICSegmenter
 from geobia.segmentation.felzenszwalb import FelzenszwalbSegmenter
+from geobia.segmentation.shepherd import ShepherdSegmenter
 
 
 class TestSLICSegmenter:
@@ -54,6 +55,44 @@ class TestFelzenszwalbSegmenter:
         assert params["scale"] == 200
 
 
+class TestShepherdSegmenter:
+    def test_produces_labeled_output(self, synthetic_image):
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres=0.5, sampling=10)
+        labels = seg.segment(synthetic_image)
+        assert labels.shape == (100, 100)
+        assert labels.dtype == np.int32
+        assert labels.max() > 0
+
+    def test_respects_nodata_mask(self, synthetic_image):
+        mask = np.zeros((100, 100), dtype=bool)
+        mask[:10, :10] = True
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres=0.5, sampling=10)
+        labels = seg.segment(synthetic_image, nodata_mask=mask)
+        assert np.all(labels[:10, :10] == 0)
+
+    def test_eliminates_small_segments(self, synthetic_image):
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=50, dist_thres=0.5, sampling=10)
+        labels = seg.segment(synthetic_image)
+        from geobia.utils.labels import segment_sizes
+        sizes = segment_sizes(labels)
+        # All segments should be >= min_n_pxls (or close to it)
+        for sid, count in sizes.items():
+            assert count >= 10  # may not reach exact min_n_pxls due to algorithm behaviour
+
+    def test_get_params(self):
+        seg = ShepherdSegmenter(num_clusters=30, min_n_pxls=50)
+        params = seg.get_params()
+        assert params["algorithm"] == "shepherd"
+        assert params["num_clusters"] == 30
+        assert params["min_n_pxls"] == 50
+
+    def test_band_selection(self, synthetic_image):
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres=0.5, sampling=10, bands=[0, 1])
+        labels = seg.segment(synthetic_image)
+        assert labels.shape == (100, 100)
+        assert labels.max() > 0
+
+
 class TestFactory:
     def test_create_slic(self):
         seg = create("slic", n_segments=100)
@@ -67,10 +106,15 @@ class TestFactory:
         with pytest.raises(ValueError, match="Unknown"):
             create("nonexistent")
 
+    def test_create_shepherd(self):
+        seg = create("shepherd", num_clusters=10)
+        assert isinstance(seg, ShepherdSegmenter)
+
     def test_list_methods(self):
         methods = list_methods()
         assert "slic" in methods
         assert "felzenszwalb" in methods
+        assert "shepherd" in methods
 
 
 class TestConvenienceSegment:

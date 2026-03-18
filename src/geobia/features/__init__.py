@@ -10,10 +10,12 @@ import pandas as pd
 from geobia.features.base import BaseExtractor
 from geobia.features.spectral import SpectralExtractor
 from geobia.features.geometry import GeometryExtractor
+from geobia.features.texture import TextureExtractor
 
 _REGISTRY: dict[str, type[BaseExtractor]] = {
     "spectral": SpectralExtractor,
     "geometry": GeometryExtractor,
+    "texture": TextureExtractor,
 }
 
 
@@ -68,6 +70,12 @@ def _create_extractor(category: str, **kwargs) -> BaseExtractor:
         )
     elif category == "geometry":
         return cls(pixel_size=kwargs.get("pixel_size"))
+    elif category == "texture":
+        return cls(
+            bands=kwargs.get("texture_bands"),
+            distances=kwargs.get("texture_distances"),
+            levels=kwargs.get("texture_levels", 32),
+        )
     return cls()
 
 
@@ -80,6 +88,7 @@ __all__ = [
     "BaseExtractor",
     "SpectralExtractor",
     "GeometryExtractor",
+    "TextureExtractor",
     "extract",
     "list_categories",
 ]

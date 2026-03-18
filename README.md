@@ -6,9 +6,10 @@ A Python library and CLI for the complete OBIA pipeline: **segment** imagery int
 
 ## Features
 
-- **Segmentation** — SLIC superpixels and Felzenszwalb graph-based segmentation, with tiled processing for large images
-- **Feature extraction** — Per-band spectral statistics (mean, std, min, max, median, range), band ratios (NDVI, NDWI), geometric shape features (area, perimeter, compactness, elongation, eccentricity, and more)
-- **Classification** — Supervised (Random Forest) and unsupervised (K-Means), with accuracy assessment (overall accuracy, kappa, confusion matrix, cross-validation)
+- **Segmentation** — SLIC superpixels, Felzenszwalb graph-based, Shepherd K-means+elimination (numba JIT accelerated), and optional SAM (segment-geospatial) — with tiled processing for large images
+- **Feature extraction** — Per-band spectral statistics (mean, std, min, max, median, range), band ratios (NDVI, NDWI), geometric shape features (area, perimeter, compactness, elongation, eccentricity, and more), GLCM texture features (contrast, homogeneity, energy, correlation, dissimilarity)
+- **Classification** — Supervised (Random Forest) and unsupervised (K-Means, Gaussian Mixture Model, DBSCAN), with accuracy assessment (overall accuracy, kappa, confusion matrix, cross-validation)
+- **Pipeline engine** — Define segment→extract→classify pipelines as JSON, run with provenance tracking, export results to Parquet or GeoPackage
 - **Export** — GeoTIFF rasters, GeoPackage vectors, Parquet feature tables
 - **Large image support** — Tiled windowed I/O and tiled segmentation with overlap stitching, powered by rasterio
 - **No GDAL Python bindings required** — Uses rasterio and geopandas for all geospatial I/O
@@ -21,7 +22,7 @@ The geospatial stack (rasterio, GDAL, PROJ) is easiest to install via conda:
 
 ```bash
 conda create -n geobia python=3.13 \
-    rasterio geopandas scikit-image scikit-learn \
+    rasterio geopandas scikit-image scikit-learn numba \
     click numpy pandas scipy pyarrow joblib shapely \
     -c conda-forge
 
@@ -44,7 +45,8 @@ uv add geobia
 ### Requirements
 
 - Python 3.13+
-- rasterio, geopandas, scikit-image, scikit-learn, click, numpy, pandas, scipy, pyarrow, joblib, shapely
+- rasterio, geopandas, scikit-image, scikit-learn, numba, click, numpy, pandas, scipy, pyarrow, joblib, shapely
+- Optional: `pip install geobia[sam]` for SAM segmentation (segment-geospatial)
 
 ## Quick start — Python API
 
@@ -133,6 +135,9 @@ geobia segment satellite.tif -o segments.tif --method slic --n-segments 1000
 # Felzenszwalb graph-based
 geobia segment satellite.tif -o segments.tif --method felzenszwalb --scale 150 --min-size 80
 
+# Shepherd K-means + elimination (fast, numba accelerated)
+geobia segment satellite.tif -o segments.tif --method shepherd --num-clusters 60 --min-size 100
+
 # Tiled processing for large images
 geobia segment satellite.tif -o segments.tif --method slic --n-segments 500 --tiled --tile-size 4096
 ```
@@ -146,6 +151,9 @@ geobia extract satellite.tif segments.tif -o features.parquet \
 
 # Spectral features only
 geobia extract satellite.tif segments.tif -o features.parquet --no-geometry
+
+# Include GLCM texture features
+geobia extract satellite.tif segments.tif -o features.parquet --texture
 ```
 
 ### Classify segments
@@ -153,6 +161,12 @@ geobia extract satellite.tif segments.tif -o features.parquet --no-geometry
 ```bash
 # Unsupervised (K-Means clustering)
 geobia classify features.parquet -o classified.parquet --method kmeans --n-clusters 6
+
+# Gaussian Mixture Model
+geobia classify features.parquet -o classified.parquet --method gmm --n-clusters 6
+
+# DBSCAN density-based clustering
+geobia classify features.parquet -o classified.parquet --method dbscan
 
 # Supervised (Random Forest with training samples)
 geobia classify features.parquet -o classified.parquet \
@@ -202,12 +216,41 @@ geobia export segments.tif -o result.gpkg --features features.parquet --classifi
 |-----------|-----------|----------------|
 | **SLIC** | Fast, predictable segment count, good for exploration | `n_segments`, `compactness`, `sigma` |
 | **Felzenszwalb** | Adaptive sizes, follows natural boundaries | `scale`, `sigma`, `min_size` |
+| **Shepherd** | K-means seeded, numba JIT accelerated, good for remote sensing | `num_clusters`, `min_n_pxls`, `dist_thres`, `sampling` |
+| **SAM** | Deep learning foundation model (optional: `pip install geobia[sam]`) | `points_per_side`, `pred_iou_thresh` |
 
 ## Extracted features
 
 **Spectral** (per band): mean, std, min, max, median, range, plus brightness (cross-band mean) and band ratios (NDVI, NDWI).
 
 **Geometric**: area (pixels and map units), perimeter, compactness, elongation, rectangularity, eccentricity, solidity, major/minor axis lengths, orientation, centroid coordinates.
+
+**Texture** (GLCM per band): contrast, dissimilarity, homogeneity, energy, correlation.
+
+## Pipeline engine
+
+Define and run a full segment→extract→classify pipeline programmatically:
+
+```python
+from geobia.pipeline import Pipeline
+
+pipeline = Pipeline([
+    ("segment", "slic", {"n_segments": 1000}),
+    ("extract", ["spectral", "geometry", "texture"], {}),
+    ("classify", "kmeans", {"n_clusters": 6}),
+])
+
+result = pipeline.run(input_path="satellite.tif")
+result.export("output.gpkg")
+
+# Save pipeline definition for reproducibility
+pipeline.save("pipeline.json")
+
+# Check timing provenance
+prov = result.provenance()
+for step in prov["steps"]:
+    print(f"{step['name']}: {step['duration_s']:.1f}s")
+```
 
 ## Development
 

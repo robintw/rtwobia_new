@@ -17,17 +17,20 @@ def cli():
 @cli.command()
 @click.argument("input_image")
 @click.option("-o", "--output", required=True, help="Output segment labels file (GeoTIFF)")
-@click.option("--method", default="slic", type=click.Choice(["slic", "felzenszwalb"]),
+@click.option("--method", default="slic", type=click.Choice(["slic", "felzenszwalb", "shepherd"]),
               help="Segmentation algorithm")
 @click.option("--n-segments", type=int, default=500, help="Number of segments (SLIC)")
 @click.option("--compactness", type=float, default=10.0, help="Compactness (SLIC)")
 @click.option("--scale", type=float, default=100.0, help="Scale parameter (Felzenszwalb)")
-@click.option("--min-size", type=int, default=50, help="Minimum segment size (Felzenszwalb)")
+@click.option("--min-size", type=int, default=50, help="Minimum segment size (Felzenszwalb/Shepherd)")
+@click.option("--num-clusters", type=int, default=60, help="K-means clusters (Shepherd)")
+@click.option("--dist-thres", type=float, default=100.0, help="Spectral distance threshold (Shepherd)")
+@click.option("--sampling", type=int, default=100, help="Subsampling rate (Shepherd)")
 @click.option("--sigma", type=float, default=None, help="Gaussian smoothing sigma")
 @click.option("--tiled", is_flag=True, help="Use tiled processing for large images")
 @click.option("--tile-size", type=int, default=2048, help="Tile size for tiled processing")
 def segment(input_image, output, method, n_segments, compactness, scale, min_size,
-            sigma, tiled, tile_size):
+            num_clusters, dist_thres, sampling, sigma, tiled, tile_size):
     """Segment an image into objects."""
     from geobia.io.raster import read_raster, write_raster
     from geobia.segmentation import segment as do_segment, segment_tiled
@@ -43,6 +46,11 @@ def segment(input_image, output, method, n_segments, compactness, scale, min_siz
         params["min_size"] = min_size
         if sigma is not None:
             params["sigma"] = sigma
+    elif method == "shepherd":
+        params["num_clusters"] = num_clusters
+        params["min_n_pxls"] = min_size
+        params["dist_thres"] = dist_thres
+        params["sampling"] = sampling
 
     if tiled:
         click.echo(f"Segmenting {input_image} with {method} (tiled, tile_size={tile_size})...")
@@ -64,9 +72,10 @@ def segment(input_image, output, method, n_segments, compactness, scale, min_siz
 @click.option("-o", "--output", required=True, help="Output feature file (Parquet)")
 @click.option("--spectral/--no-spectral", default=True, help="Extract spectral features")
 @click.option("--geometry/--no-geometry", default=True, help="Extract geometric features")
+@click.option("--texture/--no-texture", default=False, help="Extract GLCM texture features")
 @click.option("--band-names", type=str, default=None,
               help="Comma-separated band names (e.g., red,green,blue,nir)")
-def extract(input_image, segments, output, spectral, geometry, band_names):
+def extract(input_image, segments, output, spectral, geometry, texture, band_names):
     """Extract features from segmented image."""
     from geobia.io.raster import read_raster
     from geobia.features import extract as do_extract
@@ -82,6 +91,8 @@ def extract(input_image, segments, output, spectral, geometry, band_names):
         categories.append("spectral")
     if geometry:
         categories.append("geometry")
+    if texture:
+        categories.append("texture")
 
     kwargs = {}
     if band_names:
@@ -102,7 +113,7 @@ def extract(input_image, segments, output, spectral, geometry, band_names):
 @click.argument("features_file")
 @click.option("-o", "--output", required=True, help="Output classified file (GeoPackage or Parquet)")
 @click.option("--method", default="random_forest",
-              type=click.Choice(["random_forest", "kmeans"]),
+              type=click.Choice(["random_forest", "kmeans", "gmm", "dbscan"]),
               help="Classification method")
 @click.option("--training", type=click.Path(exists=True), default=None,
               help="Training samples file (required for supervised)")
