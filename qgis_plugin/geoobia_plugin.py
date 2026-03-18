@@ -2,14 +2,23 @@
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QDockWidget, QTabWidget
-from qgis.core import QgsApplication
+from qgis.PyQt.QtWidgets import QAction, QDockWidget, QMessageBox, QTabWidget
+from qgis.core import QgsApplication, QgsMessageLog, Qgis
 
-from .processing.provider import GeobiaProvider
-from .ui.segmentation_panel import SegmentationPanel
-from .ui.features_panel import FeaturesPanel
-from .ui.classification_panel import ClassificationPanel
-from .ui.results_panel import ResultsPanel
+TAG = "GeoOBIA"
+
+
+def log(msg, level=Qgis.Info):
+    QgsMessageLog.logMessage(str(msg), TAG, level)
+
+
+def _check_geobia():
+    """Return True if the geobia library is importable."""
+    try:
+        import geobia.segmentation  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 class PluginState:
@@ -35,6 +44,7 @@ class GeobiaPlugin:
         self.state = PluginState()
 
     def initGui(self):
+        log("initGui starting")
         icon_path = QgsApplication.iconPath("mIconRaster.svg")
         self.action = QAction(QIcon(icon_path), "GeoOBIA", self.iface.mainWindow())
         self.action.setCheckable(True)
@@ -42,12 +52,44 @@ class GeobiaPlugin:
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToRasterMenu("&GeoOBIA", self.action)
 
+        # Register Processing provider (defers geobia imports to algorithm runtime)
+        from .processing.provider import GeobiaProvider
         self.provider = GeobiaProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
+        log("initGui complete")
 
-        self._create_dock()
+    def _toggle_dock(self, checked):
+        log(f"_toggle_dock called: checked={checked}")
+        if checked:
+            if self.dock is None:
+                if not self._create_dock():
+                    self.action.setChecked(False)
+                    return
+            self.dock.show()
+        elif self.dock:
+            self.dock.hide()
 
-    def _create_dock(self):
+    def _create_dock(self) -> bool:
+        """Create the dock widget. Returns False if geobia is not available."""
+        log("_create_dock starting")
+        if not _check_geobia():
+            QMessageBox.critical(
+                self.iface.mainWindow(),
+                "GeoOBIA",
+                "The 'geobia' Python library is not installed in this "
+                "Python environment.\n\n"
+                "Install it with:\n"
+                "  pip install -e /path/to/geobia\n\n"
+                "Also ensure the plugin folder is NOT named 'geobia' — "
+                "that shadows the library. Use 'geobia_sketcher' or similar.",
+            )
+            return False
+
+        from .ui.segmentation_panel import SegmentationPanel
+        from .ui.features_panel import FeaturesPanel
+        from .ui.classification_panel import ClassificationPanel
+        from .ui.results_panel import ResultsPanel
+
         self.dock = QDockWidget("GeoOBIA", self.iface.mainWindow())
         self.dock.setObjectName("GeobiaDock")
 
@@ -59,11 +101,8 @@ class GeobiaPlugin:
         self.dock.setWidget(tabs)
 
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
-        self.dock.hide()
-
-    def _toggle_dock(self, checked):
-        if self.dock:
-            self.dock.setVisible(checked)
+        log("_create_dock complete — dock added")
+        return True
 
     def unload(self):
         if self.action:

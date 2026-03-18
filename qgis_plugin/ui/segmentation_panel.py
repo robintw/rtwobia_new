@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import traceback
 from collections import OrderedDict
 
 from qgis.PyQt.QtCore import Qt
@@ -18,14 +19,22 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.core import (
     QgsMapLayerProxyModel,
+    QgsMessageLog,
     QgsProject,
     QgsRasterLayer,
     QgsTask,
     QgsApplication,
+    Qgis,
 )
 from qgis.gui import QgsMapLayerComboBox
 
 from .schema_widgets import build_param_widgets, collect_param_values, create_param_group
+
+TAG = "GeoOBIA"
+
+
+def log(msg, level=Qgis.Info):
+    QgsMessageLog.logMessage(str(msg), TAG, level)
 
 
 class SegmentationPanel(QWidget):
@@ -35,9 +44,16 @@ class SegmentationPanel(QWidget):
         self.state = state
         self._param_widgets = OrderedDict()
         self._param_group = None
-        self._setup_ui()
+        log("SegmentationPanel.__init__ starting")
+        try:
+            self._setup_ui()
+            log("SegmentationPanel.__init__ completed OK")
+        except Exception:
+            log(f"SegmentationPanel.__init__ FAILED:\n{traceback.format_exc()}",
+                Qgis.Critical)
 
     def _setup_ui(self):
+        log("_setup_ui starting")
         layout = QVBoxLayout()
 
         # Input layer selector
@@ -55,7 +71,6 @@ class SegmentationPanel(QWidget):
         algo_layout = QVBoxLayout()
         self._method_combo = QComboBox()
         self._method_combo.addItems(["slic", "felzenszwalb", "shepherd"])
-        self._method_combo.currentTextChanged.connect(self._on_method_changed)
         algo_layout.addWidget(self._method_combo)
         algo_group.setLayout(algo_layout)
         layout.addWidget(algo_group)
@@ -64,7 +79,7 @@ class SegmentationPanel(QWidget):
         self._params_container = QVBoxLayout()
         layout.addLayout(self._params_container)
 
-        # Buttons
+        # Buttons — connect BEFORE anything that might fail
         btn_layout = QHBoxLayout()
         self._preview_btn = QPushButton("Preview")
         self._preview_btn.setToolTip(
@@ -89,13 +104,22 @@ class SegmentationPanel(QWidget):
 
         layout.addStretch()
         self.setLayout(layout)
+        log("_setup_ui layout done, connecting signals and loading params")
+
+        # Connect algorithm change AFTER layout is complete
+        self._method_combo.currentTextChanged.connect(self._on_method_changed)
 
         # Initialize parameter panel for default method
         self._on_method_changed(self._method_combo.currentText())
+        log("_setup_ui complete")
 
     def _on_method_changed(self, method: str):
         """Rebuild the parameter panel for the selected algorithm."""
-        from geobia.segmentation import _REGISTRY
+        try:
+            from geobia.segmentation import _REGISTRY
+        except Exception:
+            log("Cannot import geobia.segmentation — is it installed?", Qgis.Warning)
+            return
 
         # Remove old parameter group
         if self._param_group is not None:
@@ -106,17 +130,20 @@ class SegmentationPanel(QWidget):
         # Build new widgets from the algorithm's JSON Schema
         cls = _REGISTRY.get(method)
         if cls is None:
+            log(f"Method '{method}' not found in registry", Qgis.Warning)
             return
 
         schema = cls.get_param_schema()
         self._param_widgets = build_param_widgets(schema)
         self._param_group = create_param_group("Parameters", self._param_widgets)
         self._params_container.addWidget(self._param_group)
+        log(f"Loaded params for {method}: {list(self._param_widgets.keys())}")
 
     def _get_input_layer(self):
         layer = self._layer_combo.currentLayer()
         if layer is None:
             QMessageBox.warning(self, "GeoOBIA", "Select an input raster layer.")
+            log("No input layer selected", Qgis.Warning)
         return layer
 
     def _collect_params(self) -> dict:
@@ -127,12 +154,14 @@ class SegmentationPanel(QWidget):
 
     def _on_preview(self):
         """Segment a small region matching the current canvas extent."""
+        log("Preview button clicked")
         layer = self._get_input_layer()
         if layer is None:
             return
 
         method = self._method_combo.currentText()
         params = self._collect_params()
+        log(f"Preview: method={method}, params={params}, source={layer.source()}")
 
         self._progress.setVisible(True)
         self._progress.setValue(0)
@@ -141,15 +170,18 @@ class SegmentationPanel(QWidget):
         task = _PreviewTask(
             self.iface, layer, method, params, self._on_task_done)
         QgsApplication.taskManager().addTask(task)
+        log("Preview task submitted to task manager")
 
     def _on_run(self):
         """Segment the full image."""
+        log("Run button clicked")
         layer = self._get_input_layer()
         if layer is None:
             return
 
         method = self._method_combo.currentText()
         params = self._collect_params()
+        log(f"Run: method={method}, params={params}, source={layer.source()}")
 
         self._progress.setVisible(True)
         self._progress.setValue(0)
@@ -159,9 +191,11 @@ class SegmentationPanel(QWidget):
         task = _SegmentTask(
             self.iface, self.state, layer, method, params, self._on_task_done)
         QgsApplication.taskManager().addTask(task)
+        log("Segment task submitted to task manager")
 
     def _on_task_done(self, success: bool, message: str):
         """Called when a segmentation task finishes."""
+        log(f"Task done: success={success}, message={message}")
         self._progress.setVisible(False)
         self._run_btn.setEnabled(True)
         self._status.setText(message)
@@ -186,18 +220,23 @@ class _SegmentTask(QgsTask):
         self.error_msg = ""
 
     def run(self):
+        log(f"SegmentTask.run() started: method={self.method}, source={self.layer_source}")
         try:
             from geobia.io.raster import read_raster, write_raster
             from geobia.segmentation import segment
 
             self.setProgress(5)
+            log("Reading raster...")
             image, meta = read_raster(self.layer_source)
+            log(f"Image shape: {image.shape}, dtype: {image.dtype}")
 
             self.setProgress(10)
+            log(f"Segmenting with {self.method}, params={self.params}...")
             labels = segment(image, method=self.method, **self.params)
 
             self.setProgress(80)
             self.n_segments = int(labels.max())
+            log(f"Segmentation done: {self.n_segments} segments")
 
             # Write to a temp file next to the input
             fd, self.output_path = tempfile.mkstemp(
@@ -207,6 +246,7 @@ class _SegmentTask(QgsTask):
             )
             os.close(fd)
             write_raster(self.output_path, labels, meta, dtype="int32")
+            log(f"Wrote segments to {self.output_path}")
 
             # Stash for other panels
             self.state.labels_array = labels
@@ -217,9 +257,11 @@ class _SegmentTask(QgsTask):
             return True
         except Exception as e:
             self.error_msg = str(e)
+            log(f"SegmentTask.run() FAILED:\n{traceback.format_exc()}", Qgis.Critical)
             return False
 
     def finished(self, result):
+        log(f"SegmentTask.finished() called: result={result}")
         if result and self.output_path:
             name = f"Segments ({self.method})"
             rlayer = QgsRasterLayer(self.output_path, name)
@@ -227,6 +269,9 @@ class _SegmentTask(QgsTask):
                 QgsProject.instance().addMapLayer(rlayer)
                 self.state.labels_layer = rlayer
                 _apply_segment_style(rlayer)
+                log(f"Added layer '{name}' to project")
+            else:
+                log(f"Created raster layer is invalid: {self.output_path}", Qgis.Warning)
             self.callback(True, f"{self.n_segments} segments created.")
         else:
             self.callback(False, f"Segmentation failed: {self.error_msg}")
@@ -251,8 +296,10 @@ class _PreviewTask(QgsTask):
         canvas = iface.mapCanvas()
         self.canvas_extent = canvas.extent()
         self.canvas_crs = canvas.mapSettings().destinationCrs()
+        log(f"Preview extent: {self.canvas_extent.toString()}")
 
     def run(self):
+        log(f"PreviewTask.run() started: method={self.method}, source={self.layer_source}")
         try:
             import numpy as np
             import rasterio
@@ -263,6 +310,7 @@ class _PreviewTask(QgsTask):
             self.setProgress(5)
 
             with rasterio.open(self.layer_source) as ds:
+                log(f"Raster bounds: {ds.bounds}, size: {ds.width}x{ds.height}")
                 # Transform canvas extent to raster pixel window
                 try:
                     window = from_bounds(
@@ -272,8 +320,9 @@ class _PreviewTask(QgsTask):
                         self.canvas_extent.yMaximum(),
                         transform=ds.transform,
                     )
-                except Exception:
-                    # Fallback: use full image if extent doesn't overlap
+                    log(f"Window from bounds: {window}")
+                except Exception as e:
+                    log(f"from_bounds failed ({e}), using full image", Qgis.Warning)
                     window = rasterio.windows.Window(0, 0, ds.width, ds.height)
 
                 # Clip to image bounds and limit preview size
@@ -286,6 +335,7 @@ class _PreviewTask(QgsTask):
                 win_w = min(int(window.width), max_preview)
                 win_h = min(int(window.height), max_preview)
                 window = rasterio.windows.Window(col_off, row_off, win_w, win_h)
+                log(f"Final preview window: {window}")
 
                 image = ds.read(window=window)
                 meta = {
@@ -296,28 +346,36 @@ class _PreviewTask(QgsTask):
                     "height": win_h,
                 }
 
+            log(f"Preview image shape: {image.shape}, dtype: {image.dtype}")
+
             if image.size == 0:
                 self.error_msg = "Preview region is empty."
+                log("Preview region is empty", Qgis.Warning)
                 return False
 
             self.setProgress(20)
+            log(f"Segmenting preview with {self.method}, params={self.params}...")
             labels = segment(image, method=self.method, **self.params)
 
             self.setProgress(80)
             self.n_segments = int(labels.max())
+            log(f"Preview segmentation done: {self.n_segments} segments")
 
             fd, self.output_path = tempfile.mkstemp(
                 suffix="_preview.tif", prefix="geobia_preview_")
             os.close(fd)
             write_raster(self.output_path, labels, meta, dtype="int32")
+            log(f"Wrote preview to {self.output_path}")
 
             self.setProgress(100)
             return True
         except Exception as e:
             self.error_msg = str(e)
+            log(f"PreviewTask.run() FAILED:\n{traceback.format_exc()}", Qgis.Critical)
             return False
 
     def finished(self, result):
+        log(f"PreviewTask.finished() called: result={result}")
         if result and self.output_path:
             name = f"Preview ({self.method})"
             # Remove previous preview layers
@@ -328,6 +386,9 @@ class _PreviewTask(QgsTask):
             if rlayer.isValid():
                 QgsProject.instance().addMapLayer(rlayer)
                 _apply_segment_style(rlayer)
+                log(f"Added preview layer '{name}' to project")
+            else:
+                log(f"Preview raster layer is invalid: {self.output_path}", Qgis.Warning)
             self.callback(True, f"Preview: {self.n_segments} segments")
         else:
             self.callback(False, f"Preview failed: {self.error_msg}")

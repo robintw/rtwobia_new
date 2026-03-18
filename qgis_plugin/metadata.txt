@@ -1,5 +1,5 @@
 [general]
-name=GeoOBIA
+name=GeoOBIA QGIS Plugin
 qgisMinimumVersion=3.28
 description=Object-Based Image Analysis: segment imagery, extract features, classify objects
 version=0.1.0
