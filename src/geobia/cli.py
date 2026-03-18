@@ -18,17 +18,17 @@ def cli():
 @click.argument("input_image")
 @click.option("-o", "--output", required=True, help="Output segment labels file (GeoTIFF)")
 @click.option("--method", default="slic", type=click.Choice(["slic", "felzenszwalb", "shepherd"]),
-              help="Segmentation algorithm")
-@click.option("--n-segments", type=int, default=500, help="Number of segments (SLIC)")
-@click.option("--compactness", type=float, default=10.0, help="Compactness (SLIC)")
-@click.option("--scale", type=float, default=100.0, help="Scale parameter (Felzenszwalb)")
-@click.option("--min-size", type=int, default=50, help="Minimum segment size (Felzenszwalb/Shepherd)")
-@click.option("--num-clusters", type=int, default=60, help="K-means clusters (Shepherd)")
-@click.option("--dist-thres", type=float, default=100.0, help="Spectral distance threshold (Shepherd)")
-@click.option("--sampling", type=int, default=100, help="Subsampling rate (Shepherd)")
+              show_default=True, help="Segmentation algorithm")
+@click.option("--n-segments", type=int, default=500, show_default=True, help="Number of segments (SLIC)")
+@click.option("--compactness", type=float, default=10.0, show_default=True, help="Compactness (SLIC)")
+@click.option("--scale", type=float, default=100.0, show_default=True, help="Scale parameter (Felzenszwalb)")
+@click.option("--min-size", type=int, default=50, show_default=True, help="Minimum segment size (Felzenszwalb/Shepherd)")
+@click.option("--num-clusters", type=int, default=60, show_default=True, help="K-means clusters (Shepherd)")
+@click.option("--dist-thres", type=float, default=100.0, show_default=True, help="Spectral distance threshold (Shepherd)")
+@click.option("--sampling", type=int, default=100, show_default=True, help="Subsampling rate (Shepherd)")
 @click.option("--sigma", type=float, default=None, help="Gaussian smoothing sigma")
 @click.option("--tiled", is_flag=True, help="Use tiled processing for large images")
-@click.option("--tile-size", type=int, default=2048, help="Tile size for tiled processing")
+@click.option("--tile-size", type=int, default=2048, show_default=True, help="Tile size for tiled processing")
 def segment(input_image, output, method, n_segments, compactness, scale, min_size,
             num_clusters, dist_thres, sampling, sigma, tiled, tile_size):
     """Segment an image into objects."""
@@ -70,9 +70,9 @@ def segment(input_image, output, method, n_segments, compactness, scale, min_siz
 @click.argument("input_image")
 @click.argument("segments")
 @click.option("-o", "--output", required=True, help="Output feature file (Parquet)")
-@click.option("--spectral/--no-spectral", default=True, help="Extract spectral features")
-@click.option("--geometry/--no-geometry", default=True, help="Extract geometric features")
-@click.option("--texture/--no-texture", default=False, help="Extract GLCM texture features")
+@click.option("--spectral/--no-spectral", default=True, show_default=True, help="Extract spectral features")
+@click.option("--geometry/--no-geometry", default=True, show_default=True, help="Extract geometric features")
+@click.option("--texture/--no-texture", default=False, show_default=True, help="Extract GLCM texture features")
 @click.option("--band-names", type=str, default=None,
               help="Comma-separated band names (e.g., red,green,blue,nir)")
 def extract(input_image, segments, output, spectral, geometry, texture, band_names):
@@ -114,13 +114,13 @@ def extract(input_image, segments, output, spectral, geometry, texture, band_nam
 @click.option("-o", "--output", required=True, help="Output classified file (GeoPackage or Parquet)")
 @click.option("--method", default="random_forest",
               type=click.Choice(["random_forest", "kmeans", "gmm", "dbscan"]),
-              help="Classification method")
+              show_default=True, help="Classification method")
 @click.option("--training", type=click.Path(exists=True), default=None,
               help="Training samples file (required for supervised)")
 @click.option("--segments", type=click.Path(exists=True), default=None,
               help="Segment labels raster (for mapping training samples)")
-@click.option("--n-clusters", type=int, default=8, help="Number of clusters (K-Means)")
-@click.option("--n-estimators", type=int, default=100, help="Number of trees (Random Forest)")
+@click.option("--n-clusters", type=int, default=8, show_default=True, help="Number of clusters (K-Means)")
+@click.option("--n-estimators", type=int, default=100, show_default=True, help="Number of trees (Random Forest)")
 def classify(features_file, output, method, training, segments, n_clusters, n_estimators):
     """Classify segments using their features."""
     import pandas as pd
