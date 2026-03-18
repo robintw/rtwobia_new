@@ -21,18 +21,48 @@ def _check_geobia():
         return False
 
 
+class SegmentationRun:
+    """One segmentation result with its parameters and data."""
+
+    def __init__(self, method, params, labels_array, meta, raster_path,
+                 gdf, n_segments):
+        self.method = method
+        self.params = params
+        self.labels_array = labels_array
+        self.meta = meta
+        self.raster_path = raster_path
+        self.gdf = gdf  # vectorized GeoDataFrame
+        self.n_segments = n_segments
+
+    @property
+    def summary(self):
+        """Short human-readable description for the gallery list."""
+        parts = [self.method.upper()]
+        for k, v in self.params.items():
+            parts.append(f"{k}={v}")
+        return " | ".join(parts) + f"  [{self.n_segments} segs]"
+
+
 class PluginState:
     """Shared mutable state passed between panels."""
 
     def __init__(self):
         self.input_layer = None
-        self.labels_layer = None
-        self.labels_array = None
-        self.meta = None
+        # Segmentation gallery
+        self.seg_runs = []          # list[SegmentationRun]
+        self.active_seg_index = -1  # index into seg_runs, -1 = none
+        # Convenience accessors for the active segmentation
+        self.labels_layer = None    # QgsRasterLayer (hidden)
         self.features_df = None
         self.predictions = None
         self.training_samples = {}  # segment_id -> class_name
         self.class_colors = {}      # class_name -> QColor
+
+    @property
+    def active_seg(self):
+        if 0 <= self.active_seg_index < len(self.seg_runs):
+            return self.seg_runs[self.active_seg_index]
+        return None
 
 
 class GeobiaPlugin:
