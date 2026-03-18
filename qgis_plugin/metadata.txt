@@ -1,0 +1,15 @@
+[general]
+name=GeoOBIA
+qgisMinimumVersion=3.28
+description=Object-Based Image Analysis: segment imagery, extract features, classify objects
+version=0.1.0
+author=geobia project
+email=geobia@example.com
+about=A complete OBIA workflow inside QGIS. Segment imagery into objects using SLIC, Felzenszwalb, or Shepherd algorithms; extract spectral, geometric, and texture features; classify with Random Forest, K-Means, GMM, or DBSCAN.
+tracker=https://github.com/geobia/geobia/issues
+repository=https://github.com/geobia/geobia
+category=Raster
+tags=segmentation,classification,OBIA,remote sensing,object-based,image analysis
+icon=resources/icons/geobia.png
+experimental=True
+hasProcessingProvider=yes
