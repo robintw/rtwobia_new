@@ -6,6 +6,7 @@ import traceback
 from collections import OrderedDict
 
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -18,14 +19,22 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 from qgis.core import (
+    QgsFeature,
+    QgsField,
+    QgsGeometry,
     QgsMapLayerProxyModel,
     QgsMessageLog,
     QgsProject,
     QgsRasterLayer,
+    QgsSimpleFillSymbolLayer,
+    QgsSingleSymbolRenderer,
+    QgsSymbol,
     QgsTask,
+    QgsVectorLayer,
     QgsApplication,
     Qgis,
 )
+from qgis.PyQt.QtCore import QVariant
 from qgis.gui import QgsMapLayerComboBox
 
 from .schema_widgets import build_param_widgets, collect_param_values, create_param_group
@@ -165,10 +174,11 @@ class SegmentationPanel(QWidget):
 
         self._progress.setVisible(True)
         self._progress.setValue(0)
+        self._preview_btn.setEnabled(False)
         self._status.setText("Running preview...")
 
         task = _PreviewTask(
-            self.iface, layer, method, params, self._on_task_done)
+            self.iface, self.state, layer, method, params, self._on_task_done)
         QgsApplication.taskManager().addTask(task)
         log("Preview task submitted to task manager")
 
@@ -198,6 +208,7 @@ class SegmentationPanel(QWidget):
         log(f"Task done: success={success}, message={message}")
         self._progress.setVisible(False)
         self._run_btn.setEnabled(True)
+        self._preview_btn.setEnabled(True)
         self._status.setText(message)
         if not success:
             QMessageBox.warning(self, "GeoOBIA", message)
@@ -218,12 +229,16 @@ class _SegmentTask(QgsTask):
         self.output_path = None
         self.n_segments = 0
         self.error_msg = ""
+        # Vectorized polygons built in run(), used in finished()
+        self._wkt_features = []  # list of (segment_id, wkt)
+        self._crs_str = None
 
     def run(self):
         log(f"SegmentTask.run() started: method={self.method}, source={self.layer_source}")
         try:
             from geobia.io.raster import read_raster, write_raster
             from geobia.segmentation import segment
+            from geobia.utils.vectorize import vectorize_labels
 
             self.setProgress(5)
             log("Reading raster...")
@@ -234,11 +249,11 @@ class _SegmentTask(QgsTask):
             log(f"Segmenting with {self.method}, params={self.params}...")
             labels = segment(image, method=self.method, **self.params)
 
-            self.setProgress(80)
+            self.setProgress(70)
             self.n_segments = int(labels.max())
             log(f"Segmentation done: {self.n_segments} segments")
 
-            # Write to a temp file next to the input
+            # Write raster labels to temp file
             fd, self.output_path = tempfile.mkstemp(
                 suffix="_segments.tif",
                 prefix=f"geobia_{self.method}_",
@@ -246,7 +261,19 @@ class _SegmentTask(QgsTask):
             )
             os.close(fd)
             write_raster(self.output_path, labels, meta, dtype="int32")
-            log(f"Wrote segments to {self.output_path}")
+            log(f"Wrote segments raster to {self.output_path}")
+
+            # Vectorize for display (must happen in worker thread, not GUI thread)
+            self.setProgress(80)
+            log("Vectorizing segments for outline display...")
+            crs = meta.get("crs")
+            self._crs_str = str(crs) if crs else "EPSG:4326"
+            gdf = vectorize_labels(labels, meta["transform"], crs)
+            self._wkt_features = [
+                (int(row["segment_id"]), row.geometry.wkt)
+                for _, row in gdf.iterrows()
+            ]
+            log(f"Vectorized {len(self._wkt_features)} polygons")
 
             # Stash for other panels
             self.state.labels_array = labels
@@ -262,16 +289,25 @@ class _SegmentTask(QgsTask):
 
     def finished(self, result):
         log(f"SegmentTask.finished() called: result={result}")
-        if result and self.output_path:
+        if result:
             name = f"Segments ({self.method})"
-            rlayer = QgsRasterLayer(self.output_path, name)
+            # Remove previous segment outline layers with same name
+            for lyr in QgsProject.instance().mapLayersByName(name):
+                QgsProject.instance().removeMapLayer(lyr.id())
+
+            # Also add raster labels layer (hidden — used by other panels)
+            rlayer = QgsRasterLayer(self.output_path, f"{name} [raster]")
             if rlayer.isValid():
-                QgsProject.instance().addMapLayer(rlayer)
+                QgsProject.instance().addMapLayer(rlayer, addToLegend=False)
                 self.state.labels_layer = rlayer
-                _apply_segment_style(rlayer)
-                log(f"Added layer '{name}' to project")
-            else:
-                log(f"Created raster layer is invalid: {self.output_path}", Qgis.Warning)
+
+            # Add vector outline layer
+            vlayer = _create_outline_layer(
+                name, self._crs_str, self._wkt_features)
+            if vlayer:
+                QgsProject.instance().addMapLayer(vlayer)
+                log(f"Added outline layer '{name}' with {len(self._wkt_features)} features")
+
             self.callback(True, f"{self.n_segments} segments created.")
         else:
             self.callback(False, f"Segmentation failed: {self.error_msg}")
@@ -280,17 +316,19 @@ class _SegmentTask(QgsTask):
 class _PreviewTask(QgsTask):
     """Run segmentation on the visible canvas extent only."""
 
-    def __init__(self, iface, layer, method, params, callback):
+    def __init__(self, iface, state, layer, method, params, callback):
         super().__init__(f"GeoOBIA: Preview ({method})")
         self.iface = iface
+        self.state = state
         self.layer = layer
         self.layer_source = layer.source()
         self.method = method
         self.params = params
         self.callback = callback
-        self.output_path = None
         self.n_segments = 0
         self.error_msg = ""
+        self._wkt_features = []
+        self._crs_str = None
 
         # Capture canvas extent on the main thread
         canvas = iface.mapCanvas()
@@ -301,11 +339,10 @@ class _PreviewTask(QgsTask):
     def run(self):
         log(f"PreviewTask.run() started: method={self.method}, source={self.layer_source}")
         try:
-            import numpy as np
             import rasterio
             from rasterio.windows import from_bounds
-            from geobia.io.raster import write_raster
             from geobia.segmentation import segment
+            from geobia.utils.vectorize import vectorize_labels
 
             self.setProgress(5)
 
@@ -357,15 +394,25 @@ class _PreviewTask(QgsTask):
             log(f"Segmenting preview with {self.method}, params={self.params}...")
             labels = segment(image, method=self.method, **self.params)
 
-            self.setProgress(80)
+            self.setProgress(70)
             self.n_segments = int(labels.max())
             log(f"Preview segmentation done: {self.n_segments} segments")
 
-            fd, self.output_path = tempfile.mkstemp(
-                suffix="_preview.tif", prefix="geobia_preview_")
-            os.close(fd)
-            write_raster(self.output_path, labels, meta, dtype="int32")
-            log(f"Wrote preview to {self.output_path}")
+            # Vectorize for outline display
+            self.setProgress(80)
+            log("Vectorizing preview segments...")
+            crs = meta.get("crs")
+            self._crs_str = str(crs) if crs else "EPSG:4326"
+            gdf = vectorize_labels(labels, meta["transform"], crs)
+            self._wkt_features = [
+                (int(row["segment_id"]), row.geometry.wkt)
+                for _, row in gdf.iterrows()
+            ]
+            log(f"Vectorized {len(self._wkt_features)} preview polygons")
+
+            # Stash labels for other panels
+            self.state.labels_array = labels
+            self.state.meta = meta
 
             self.setProgress(100)
             return True
@@ -376,46 +423,65 @@ class _PreviewTask(QgsTask):
 
     def finished(self, result):
         log(f"PreviewTask.finished() called: result={result}")
-        if result and self.output_path:
+        if result:
             name = f"Preview ({self.method})"
             # Remove previous preview layers
             for lyr in QgsProject.instance().mapLayersByName(name):
                 QgsProject.instance().removeMapLayer(lyr.id())
 
-            rlayer = QgsRasterLayer(self.output_path, name)
-            if rlayer.isValid():
-                QgsProject.instance().addMapLayer(rlayer)
-                _apply_segment_style(rlayer)
-                log(f"Added preview layer '{name}' to project")
-            else:
-                log(f"Preview raster layer is invalid: {self.output_path}", Qgis.Warning)
+            vlayer = _create_outline_layer(
+                name, self._crs_str, self._wkt_features)
+            if vlayer:
+                QgsProject.instance().addMapLayer(vlayer)
+                log(f"Added preview outline layer '{name}'")
+
             self.callback(True, f"Preview: {self.n_segments} segments")
         else:
             self.callback(False, f"Preview failed: {self.error_msg}")
 
 
-def _apply_segment_style(layer: QgsRasterLayer):
-    """Apply a singleband pseudocolor style to make segment boundaries visible."""
-    from qgis.core import (
-        QgsRasterShader,
-        QgsSingleBandPseudoColorRenderer,
-        QgsColorRampShader,
-        QgsStyle,
-    )
+def _create_outline_layer(name, crs_str, wkt_features):
+    """Create a memory vector layer with bright yellow outlines from WKT geometries.
 
-    shader = QgsRasterShader()
-    color_ramp_shader = QgsColorRampShader()
-    color_ramp_shader.setColorRampType(QgsColorRampShader.Interpolated)
+    Args:
+        name: Layer name for the QGIS legend.
+        crs_str: CRS string like "EPSG:32633".
+        wkt_features: list of (segment_id, wkt_string) tuples.
 
-    # Use a spectral color ramp for visual distinction
-    style = QgsStyle.defaultStyle()
-    ramp = style.colorRamp("Spectral")
-    if ramp:
-        color_ramp_shader.setSourceColorRamp(ramp)
-    color_ramp_shader.classifyColorRamp(255)
+    Returns:
+        QgsVectorLayer or None on failure.
+    """
+    try:
+        vlayer = QgsVectorLayer(
+            f"Polygon?crs={crs_str}", name, "memory")
+        provider = vlayer.dataProvider()
+        provider.addAttributes([QgsField("segment_id", QVariant.Int)])
+        vlayer.updateFields()
 
-    shader.setRasterShaderFunction(color_ramp_shader)
-    renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
-    layer.setRenderer(renderer)
-    layer.setOpacity(0.5)
-    layer.triggerRepaint()
+        features = []
+        for seg_id, wkt in wkt_features:
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromWkt(wkt))
+            feat.setAttributes([seg_id])
+            features.append(feat)
+
+        provider.addFeatures(features)
+        vlayer.updateExtents()
+
+        # Bright yellow outline, no fill
+        symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
+        symbol.deleteSymbolLayer(0)
+        outline = QgsSimpleFillSymbolLayer()
+        outline.setFillColor(QColor(0, 0, 0, 0))       # transparent fill
+        outline.setStrokeColor(QColor(255, 255, 0))     # bright yellow
+        outline.setStrokeWidth(0.5)
+        symbol.appendSymbolLayer(outline)
+
+        vlayer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        vlayer.triggerRepaint()
+
+        log(f"Created outline layer '{name}' with {len(features)} features")
+        return vlayer
+    except Exception:
+        log(f"_create_outline_layer FAILED:\n{traceback.format_exc()}", Qgis.Critical)
+        return None
