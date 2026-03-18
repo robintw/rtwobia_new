@@ -57,7 +57,7 @@ class TestFelzenszwalbSegmenter:
 
 class TestShepherdSegmenter:
     def test_produces_labeled_output(self, synthetic_image):
-        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres=0.5, sampling=10)
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres="auto", sampling=10)
         labels = seg.segment(synthetic_image)
         assert labels.shape == (100, 100)
         assert labels.dtype == np.int32
@@ -66,12 +66,12 @@ class TestShepherdSegmenter:
     def test_respects_nodata_mask(self, synthetic_image):
         mask = np.zeros((100, 100), dtype=bool)
         mask[:10, :10] = True
-        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres=0.5, sampling=10)
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres="auto", sampling=10)
         labels = seg.segment(synthetic_image, nodata_mask=mask)
         assert np.all(labels[:10, :10] == 0)
 
     def test_eliminates_small_segments(self, synthetic_image):
-        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=50, dist_thres=0.5, sampling=10)
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=50, dist_thres="auto", sampling=10)
         labels = seg.segment(synthetic_image)
         from geobia.utils.labels import segment_sizes
         sizes = segment_sizes(labels)
@@ -87,7 +87,7 @@ class TestShepherdSegmenter:
         assert params["min_n_pxls"] == 50
 
     def test_band_selection(self, synthetic_image):
-        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres=0.5, sampling=10, bands=[0, 1])
+        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres="auto", sampling=10, bands=[0, 1])
         labels = seg.segment(synthetic_image)
         assert labels.shape == (100, 100)
         assert labels.max() > 0

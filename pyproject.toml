@@ -17,6 +17,7 @@ dependencies = [
     "pyarrow>=14.0",
     "joblib>=1.3",
     "numba>=0.60",
+    "pyshepseg @ git+https://github.com/ubarsc/pyshepseg.git",
 ]
 
 [project.optional-dependencies]
