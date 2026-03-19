@@ -23,11 +23,24 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import QgsMessageLog, Qgis
+from qgis.core import (
+    QgsCategorizedSymbolRenderer,
+    QgsFeature,
+    QgsField,
+    QgsGeometry,
+    QgsMessageLog,
+    QgsProject,
+    QgsRendererCategory,
+    QgsSymbol,
+    QgsVectorLayer,
+    Qgis,
+)
+from qgis.PyQt.QtCore import QVariant
 
 from .sample_selector import SampleSelectorTool
 
 TAG = "GeoOBIA"
+_SAMPLES_LAYER_NAME = "GeoOBIA Training Samples"
 
 # Default class color palette
 _PALETTE = [
@@ -47,6 +60,7 @@ class ClassificationPanel(QWidget):
         self.iface = iface
         self.state = state
         self._sample_tool = None
+        self._samples_layer = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -109,7 +123,7 @@ class ClassificationPanel(QWidget):
         self._select_btn.toggled.connect(self._toggle_sample_tool)
         sample_layout.addWidget(self._select_btn)
 
-        self._sample_count_label = QLabel("Samples: 0")
+        self._sample_count_label = QLabel("Total Samples: 0")
         sample_layout.addWidget(self._sample_count_label)
 
         sample_group.setLayout(sample_layout)
@@ -127,7 +141,7 @@ class ClassificationPanel(QWidget):
 
         # Train / Predict
         action_row = QHBoxLayout()
-        train_btn = QPushButton("Train & Predict")
+        train_btn = QPushButton("Train && Predict")
         train_btn.clicked.connect(self._on_train)
         action_row.addWidget(train_btn)
         layout.addLayout(action_row)
@@ -263,16 +277,19 @@ class ClassificationPanel(QWidget):
             if self._sample_tool:
                 self.iface.mapCanvas().unsetMapTool(self._sample_tool)
                 self._sample_tool = None
+            # Keep the samples layer visible so user can see selections
 
     def _on_sample_added(self, seg_id, class_name):
         self._update_sample_counts()
+        self._update_samples_layer()
 
     def _on_sample_removed(self, seg_id):
         self._update_sample_counts()
+        self._update_samples_layer()
 
     def _update_sample_counts(self):
         total = len(self.state.training_samples)
-        self._sample_count_label.setText(f"Samples: {total}")
+        self._sample_count_label.setText(f"Total Samples: {total}")
 
         # Update per-class counts in the table
         from collections import Counter
@@ -280,6 +297,83 @@ class ClassificationPanel(QWidget):
         for row in range(self._class_table.rowCount()):
             name = self._class_table.item(row, 0).text()
             self._class_table.item(row, 2).setText(str(counts.get(name, 0)))
+
+    def _update_samples_layer(self):
+        """Create/refresh a vector layer showing selected training samples
+        colored by class."""
+        self._remove_samples_layer()
+
+        seg = self.state.active_seg
+        if seg is None or not self.state.training_samples:
+            return
+
+        crs = seg.meta.get("crs")
+        crs_str = str(crs) if crs else "EPSG:4326"
+
+        vlayer = QgsVectorLayer(
+            f"Polygon?crs={crs_str}", _SAMPLES_LAYER_NAME, "memory")
+        provider = vlayer.dataProvider()
+        provider.addAttributes([
+            QgsField("segment_id", QVariant.Int),
+            QgsField("class_name", QVariant.String),
+        ])
+        vlayer.updateFields()
+
+        # Build a lookup from segment_id -> geometry
+        gdf = seg.gdf
+        geom_lookup = {
+            int(row["segment_id"]): row.geometry.wkt
+            for _, row in gdf.iterrows()
+        }
+
+        features = []
+        for seg_id, class_name in self.state.training_samples.items():
+            wkt = geom_lookup.get(seg_id)
+            if wkt is None:
+                continue
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromWkt(wkt))
+            feat.setAttributes([seg_id, class_name])
+            features.append(feat)
+
+        if not features:
+            return
+
+        provider.addFeatures(features)
+        vlayer.updateExtents()
+
+        # Categorized renderer: one color per class
+        class_names = sorted(set(self.state.training_samples.values()))
+        categories = []
+        for i, cls_name in enumerate(class_names):
+            symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
+            color = self.state.class_colors.get(
+                cls_name, QColor(_PALETTE[i % len(_PALETTE)]))
+            symbol.setColor(color)
+            symbol.setOpacity(0.55)
+            categories.append(QgsRendererCategory(cls_name, symbol, cls_name))
+
+        renderer = QgsCategorizedSymbolRenderer("class_name", categories)
+        vlayer.setRenderer(renderer)
+
+        QgsProject.instance().addMapLayer(vlayer)
+        self._samples_layer = vlayer
+        self.iface.mapCanvas().refresh()
+
+    def _remove_samples_layer(self):
+        """Remove the training samples layer from the map."""
+        if self._samples_layer is not None:
+            try:
+                self._samples_layer.id()
+                QgsProject.instance().removeMapLayer(self._samples_layer.id())
+            except (RuntimeError, Exception):
+                pass
+            self._samples_layer = None
+        for lyr in QgsProject.instance().mapLayersByName(_SAMPLES_LAYER_NAME):
+            try:
+                QgsProject.instance().removeMapLayer(lyr.id())
+            except (RuntimeError, Exception):
+                pass
 
     # ---- Training / Prediction ----
 

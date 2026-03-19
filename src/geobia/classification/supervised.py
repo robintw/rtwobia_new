@@ -37,7 +37,7 @@ class SupervisedClassifier(BaseClassifier):
                 "max_features": "sqrt",
                 "class_weight": "balanced",
                 "random_state": 42,
-                "n_jobs": -1,
+                "n_jobs": 1,
             }
             defaults.update(self.params)
             return RandomForestClassifier(**defaults)
