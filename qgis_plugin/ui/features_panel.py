@@ -2,7 +2,8 @@
 
 import traceback
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -15,9 +16,21 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import QgsMessageLog, Qgis
+from qgis.core import (
+    QgsFeature,
+    QgsField,
+    QgsGeometry,
+    QgsMessageLog,
+    QgsProject,
+    QgsSimpleFillSymbolLayer,
+    QgsSingleSymbolRenderer,
+    QgsSymbol,
+    QgsVectorLayer,
+    Qgis,
+)
 
 TAG = "GeoOBIA"
+_FEATURES_LAYER_NAME = "GeoOBIA Features"
 
 
 def log(msg, level=Qgis.Info):
@@ -29,6 +42,7 @@ class FeaturesPanel(QWidget):
         super().__init__(parent)
         self.iface = iface
         self.state = state
+        self._features_layer = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -55,9 +69,13 @@ class FeaturesPanel(QWidget):
         self._geometry_cb.setChecked(True)
         cat_layout.addWidget(self._geometry_cb)
 
-        self._texture_cb = QCheckBox("Texture (GLCM contrast, homogeneity, entropy)")
+        self._texture_cb = QCheckBox("Texture (GLCM: contrast, dissimilarity, homogeneity, energy, correlation per band)")
         self._texture_cb.setChecked(False)
         cat_layout.addWidget(self._texture_cb)
+
+        self._context_cb = QCheckBox("Context (neighbor count, border contrast)")
+        self._context_cb.setChecked(False)
+        cat_layout.addWidget(self._context_cb)
 
         cat_group.setLayout(cat_layout)
         layout.addWidget(cat_group)
@@ -122,6 +140,8 @@ class FeaturesPanel(QWidget):
             categories.append("geometry")
         if self._texture_cb.isChecked():
             categories.append("texture")
+        if self._context_cb.isChecked():
+            categories.append("context")
 
         if not categories:
             QMessageBox.warning(self, "GeoOBIA", "Select at least one feature category.")
@@ -160,8 +180,13 @@ class FeaturesPanel(QWidget):
             self.state.features_df = features
             n_segs = len(features)
             n_feats = len(features.columns)
-            self._status.setText(f"{n_feats} features extracted for {n_segs} segments.")
             log(f"Extraction done: {n_feats} features x {n_segs} segments")
+            log(f"Feature columns: {list(features.columns)}")
+
+            # Update the vector layer in QGIS with feature attributes
+            self._update_features_layer(seg, features)
+
+            self._status.setText(f"{n_feats} features extracted for {n_segs} segments.")
 
         except Exception:
             msg = traceback.format_exc()
@@ -171,3 +196,94 @@ class FeaturesPanel(QWidget):
         finally:
             QApplication.restoreOverrideCursor()
             self._extract_btn.setEnabled(True)
+
+    def _update_features_layer(self, seg, features_df):
+        """Create/replace a vector layer with all extracted feature attributes.
+
+        This makes features visible in QGIS's Identify Features tool.
+        """
+        import numpy as np
+        import pandas as pd
+
+        # Remove old features layer
+        self._remove_features_layer()
+
+        crs = seg.meta.get("crs")
+        crs_str = str(crs) if crs else "EPSG:4326"
+
+        vlayer = QgsVectorLayer(
+            f"Polygon?crs={crs_str}", _FEATURES_LAYER_NAME, "memory")
+        provider = vlayer.dataProvider()
+
+        # Build fields: segment_id + all feature columns
+        qgs_fields = [QgsField("segment_id", QVariant.Int)]
+        for col in features_df.columns:
+            dtype = features_df[col].dtype
+            if pd.api.types.is_integer_dtype(dtype):
+                qgs_fields.append(QgsField(col, QVariant.Int))
+            elif pd.api.types.is_float_dtype(dtype):
+                qgs_fields.append(QgsField(col, QVariant.Double))
+            else:
+                qgs_fields.append(QgsField(col, QVariant.String))
+        provider.addAttributes(qgs_fields)
+        vlayer.updateFields()
+
+        # Add features with all attributes
+        qgs_features = []
+        for _, row_data in seg.gdf.iterrows():
+            sid = int(row_data["segment_id"])
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromWkt(row_data.geometry.wkt))
+
+            attrs = [sid]
+            if sid in features_df.index:
+                for col in features_df.columns:
+                    val = features_df.loc[sid, col]
+                    if pd.isna(val):
+                        attrs.append(None)
+                    elif isinstance(val, (np.integer,)):
+                        attrs.append(int(val))
+                    elif isinstance(val, (np.floating, float)):
+                        attrs.append(float(val))
+                    else:
+                        attrs.append(str(val))
+            else:
+                attrs.extend([None] * len(features_df.columns))
+
+            feat.setAttributes(attrs)
+            qgs_features.append(feat)
+
+        provider.addFeatures(qgs_features)
+        vlayer.updateExtents()
+
+        # Transparent fill, thin outline so it doesn't obscure the image
+        symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
+        symbol.deleteSymbolLayer(0)
+        outline = QgsSimpleFillSymbolLayer()
+        outline.setFillColor(QColor(0, 0, 0, 0))
+        outline.setStrokeColor(QColor(100, 200, 255))
+        outline.setStrokeWidth(0.3)
+        symbol.appendSymbolLayer(outline)
+        vlayer.setRenderer(QgsSingleSymbolRenderer(symbol))
+
+        QgsProject.instance().addMapLayer(vlayer)
+        self._features_layer = vlayer
+        self.iface.mapCanvas().refresh()
+        log(f"Features layer added with {len(qgs_features)} features, "
+            f"{len(features_df.columns)} attributes")
+
+    def _remove_features_layer(self):
+        """Remove the current features layer from the map."""
+        if self._features_layer is not None:
+            try:
+                self._features_layer.id()
+                QgsProject.instance().removeMapLayer(self._features_layer.id())
+            except (RuntimeError, Exception):
+                pass
+            self._features_layer = None
+        # Clean up any stale layers with our name
+        for lyr in QgsProject.instance().mapLayersByName(_FEATURES_LAYER_NAME):
+            try:
+                QgsProject.instance().removeMapLayer(lyr.id())
+            except Exception:
+                pass

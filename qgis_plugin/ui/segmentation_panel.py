@@ -261,11 +261,12 @@ class SegmentationPanel(QWidget):
         self.state.active_seg_index = row
 
         # Set up raster labels layer for classification panel
-        if self.state.labels_layer:
+        if self.state.labels_layer is not None:
             # Remove old hidden raster layer
             try:
+                self.state.labels_layer.id()
                 QgsProject.instance().removeMapLayer(self.state.labels_layer.id())
-            except Exception:
+            except (RuntimeError, Exception):
                 pass
         rlayer = QgsRasterLayer(run.raster_path, "GeoOBIA Segments [raster]")
         if rlayer.isValid():
@@ -365,10 +366,14 @@ class SegmentationPanel(QWidget):
         """Remove the current outline layer from the map."""
         if self._outline_layer is not None:
             try:
+                self._outline_layer.id()  # check C++ object alive
                 QgsProject.instance().removeMapLayer(self._outline_layer.id())
-            except Exception:
+            except (RuntimeError, Exception):
                 pass
             self._outline_layer = None
         # Also clean up any stale layers with our name
         for lyr in QgsProject.instance().mapLayersByName(_OUTLINE_LAYER_NAME):
-            QgsProject.instance().removeMapLayer(lyr.id())
+            try:
+                QgsProject.instance().removeMapLayer(lyr.id())
+            except (RuntimeError, Exception):
+                pass

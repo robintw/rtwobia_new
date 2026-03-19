@@ -1,8 +1,10 @@
 """Results visualization and export panel."""
 
 import os
+import traceback
 
 from qgis.PyQt.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QGroupBox,
@@ -24,8 +26,12 @@ from qgis.core import (
     QgsCategorizedSymbolRenderer,
     QgsRendererCategory,
     QgsSymbol,
+    QgsMessageLog,
+    Qgis,
 )
 from qgis.PyQt.QtCore import QVariant
+
+TAG = "GeoOBIA"
 
 # Default palette for classes
 _PALETTE = [
@@ -33,6 +39,21 @@ _PALETTE = [
     "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
     "#dcbeff", "#9A6324", "#800000", "#aaffc3", "#808000",
 ]
+
+
+def log(msg, level=Qgis.Info):
+    QgsMessageLog.logMessage(str(msg), TAG, level)
+
+
+def _is_layer_alive(layer):
+    """Check if a QgsVectorLayer C++ object is still valid."""
+    if layer is None:
+        return False
+    try:
+        layer.id()
+        return True
+    except RuntimeError:
+        return False
 
 
 class ResultsPanel(QWidget):
@@ -95,6 +116,10 @@ class ResultsPanel(QWidget):
             "CSV (.csv) — features + classes",
         ])
         export_layout.addWidget(self._export_format)
+
+        self._add_to_qgis_cb = QCheckBox("Add exported layer to QGIS")
+        self._add_to_qgis_cb.setChecked(True)
+        export_layout.addWidget(self._add_to_qgis_cb)
 
         export_btn = QPushButton("Export...")
         export_btn.clicked.connect(self._on_export)
@@ -160,10 +185,13 @@ class ResultsPanel(QWidget):
 
     def _get_or_create_vector_layer(self, seg):
         """Vectorize labels into a memory vector layer."""
-        if self._vector_layer is not None:
-            # Check if still in project
+        # Check if the cached layer is still alive and in the project
+        if _is_layer_alive(self._vector_layer):
             if QgsProject.instance().mapLayer(self._vector_layer.id()):
                 return self._vector_layer
+
+        # Layer was deleted or removed — clear reference and recreate
+        self._vector_layer = None
 
         try:
             gdf = seg.gdf.copy()
@@ -211,8 +239,9 @@ class ResultsPanel(QWidget):
             return vlayer
 
         except Exception as e:
+            log(f"Failed to create vector layer: {e}", Qgis.Warning)
             QMessageBox.warning(
-                self, "GeoOBIA", f"Failed to vectorize segments: {e}")
+                self, "GeoOBIA", f"Failed to create results layer: {e}")
             return None
 
     def _apply_categorized_style(self, vlayer):
@@ -281,6 +310,31 @@ class ResultsPanel(QWidget):
             if path:
                 self._export_csv(path)
 
+    def _maybe_add_to_qgis(self, path):
+        """Add the exported file as a QGIS layer if the checkbox is ticked."""
+        if not self._add_to_qgis_cb.isChecked():
+            return
+
+        name = os.path.splitext(os.path.basename(path))[0]
+
+        if path.endswith((".gpkg",)):
+            from qgis.core import QgsVectorLayer as QVL
+            layer = QVL(path, name, "ogr")
+            if layer.isValid():
+                QgsProject.instance().addMapLayer(layer)
+                log(f"Added vector layer: {name}")
+            else:
+                log(f"Failed to load exported layer: {path}", Qgis.Warning)
+
+        elif path.endswith((".tif", ".tiff")):
+            from qgis.core import QgsRasterLayer
+            layer = QgsRasterLayer(path, name)
+            if layer.isValid():
+                QgsProject.instance().addMapLayer(layer)
+                log(f"Added raster layer: {name}")
+            else:
+                log(f"Failed to load exported layer: {path}", Qgis.Warning)
+
     def _export_gpkg(self, path):
         try:
             seg = self._get_active_seg()
@@ -302,7 +356,9 @@ class ResultsPanel(QWidget):
 
             gdf.to_file(path, driver="GPKG")
             self._status.setText(f"Exported to {path}")
+            self._maybe_add_to_qgis(path)
         except Exception as e:
+            log(f"Export GPKG failed: {traceback.format_exc()}", Qgis.Critical)
             QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")
 
     def _export_geotiff(self, path):
@@ -313,7 +369,9 @@ class ResultsPanel(QWidget):
             from geobia.io.raster import write_raster
             write_raster(path, seg.labels_array, seg.meta, dtype="int32")
             self._status.setText(f"Exported to {path}")
+            self._maybe_add_to_qgis(path)
         except Exception as e:
+            log(f"Export GeoTIFF failed: {traceback.format_exc()}", Qgis.Critical)
             QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")
 
     def _export_parquet(self, path):
@@ -328,6 +386,7 @@ class ResultsPanel(QWidget):
             df.to_parquet(path)
             self._status.setText(f"Exported to {path}")
         except Exception as e:
+            log(f"Export Parquet failed: {traceback.format_exc()}", Qgis.Critical)
             QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")
 
     def _export_csv(self, path):
@@ -342,4 +401,5 @@ class ResultsPanel(QWidget):
             df.to_csv(path)
             self._status.setText(f"Exported to {path}")
         except Exception as e:
+            log(f"Export CSV failed: {traceback.format_exc()}", Qgis.Critical)
             QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")
