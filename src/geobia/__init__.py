@@ -18,14 +18,20 @@ __version__ = "0.1.0"
 
 from geobia import io
 from geobia.segmentation import segment, segment_tiled
+from geobia.segmentation.multiscale import segment_multiscale
 from geobia.features import extract as extract_features
 from geobia.classification import classify
+from geobia import change
+from geobia import batch
 
 __all__ = [
     "__version__",
     "io",
     "segment",
     "segment_tiled",
+    "segment_multiscale",
     "extract_features",
     "classify",
+    "change",
+    "batch",
 ]

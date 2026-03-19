@@ -8,6 +8,7 @@ from geobia.classification.base import BaseClassifier
 from geobia.classification.supervised import SupervisedClassifier
 from geobia.classification.unsupervised import UnsupervisedClassifier
 from geobia.classification.accuracy import AccuracyReport, assess_accuracy, cross_validate
+from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
 
 
 def classify(
@@ -29,10 +30,19 @@ def classify(
         Series with predicted labels (segment_id index).
     """
     unsupervised_methods = ("kmeans", "gmm", "dbscan")
+    supervised_methods = ("random_forest", "svm", "gradient_boosting")
+
     if method in unsupervised_methods:
         clf = UnsupervisedClassifier(algorithm=method, **params)
         clf.fit(features)
+    elif method == "fuzzy":
+        clf = FuzzyClassifier(**params)
+        clf.fit(features)
+    elif method in supervised_methods:
+        clf = SupervisedClassifier(algorithm=method, **params)
+        clf.fit(features, training_labels)
     else:
+        # Try as supervised (will raise if unknown)
         clf = SupervisedClassifier(algorithm=method, **params)
         clf.fit(features, training_labels)
 
@@ -43,6 +53,8 @@ __all__ = [
     "BaseClassifier",
     "SupervisedClassifier",
     "UnsupervisedClassifier",
+    "FuzzyClassifier",
+    "FuzzyRule",
     "AccuracyReport",
     "assess_accuracy",
     "cross_validate",

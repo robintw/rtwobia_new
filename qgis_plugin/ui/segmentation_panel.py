@@ -78,7 +78,7 @@ class SegmentationPanel(QWidget):
         algo_group = QGroupBox("Algorithm")
         algo_layout = QVBoxLayout()
         self._method_combo = QComboBox()
-        self._method_combo.addItems(["slic", "felzenszwalb", "shepherd"])
+        self._method_combo.addItems(["slic", "felzenszwalb", "shepherd", "watershed"])
         algo_layout.addWidget(self._method_combo)
         algo_group.setLayout(algo_layout)
         layout.addWidget(algo_group)

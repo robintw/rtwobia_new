@@ -1,27 +1,27 @@
 """Feature extraction configuration panel."""
 
-import os
-import tempfile
+import traceback
 
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import (
-    QgsApplication,
-    QgsMapLayerProxyModel,
-    QgsTask,
-)
-from qgis.gui import QgsMapLayerComboBox
+from qgis.core import QgsMessageLog, Qgis
+
+TAG = "GeoOBIA"
+
+
+def log(msg, level=Qgis.Info):
+    QgsMessageLog.logMessage(str(msg), TAG, level)
 
 
 class FeaturesPanel(QWidget):
@@ -34,20 +34,14 @@ class FeaturesPanel(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout()
 
-        # Input layers
-        input_group = QGroupBox("Input Layers")
-        input_layout = QFormLayout()
-
-        self._image_combo = QgsMapLayerComboBox()
-        self._image_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
-        input_layout.addRow("Image:", self._image_combo)
-
-        self._segments_combo = QgsMapLayerComboBox()
-        self._segments_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
-        input_layout.addRow("Segments:", self._segments_combo)
-
-        input_group.setLayout(input_layout)
-        layout.addWidget(input_group)
+        # Active segmentation indicator
+        seg_group = QGroupBox("Active Segmentation")
+        seg_layout = QVBoxLayout()
+        self._seg_label = QLabel("No segmentation selected.")
+        self._seg_label.setWordWrap(True)
+        seg_layout.addWidget(self._seg_label)
+        seg_group.setLayout(seg_layout)
+        layout.addWidget(seg_group)
 
         # Feature categories
         cat_group = QGroupBox("Feature Categories")
@@ -81,16 +75,10 @@ class FeaturesPanel(QWidget):
         layout.addWidget(band_group)
 
         # Extract button
-        btn_layout = QHBoxLayout()
         self._extract_btn = QPushButton("Extract Features")
+        self._extract_btn.setToolTip("Extract features from the active segmentation")
         self._extract_btn.clicked.connect(self._on_extract)
-        btn_layout.addWidget(self._extract_btn)
-        layout.addLayout(btn_layout)
-
-        # Progress
-        self._progress = QProgressBar()
-        self._progress.setVisible(False)
-        layout.addWidget(self._progress)
+        layout.addWidget(self._extract_btn)
 
         # Status
         self._status = QLabel("")
@@ -99,13 +87,32 @@ class FeaturesPanel(QWidget):
         layout.addStretch()
         self.setLayout(layout)
 
+    def showEvent(self, event):
+        """Update the active segmentation label when the panel becomes visible."""
+        super().showEvent(event)
+        self._update_seg_label()
+
+    def _update_seg_label(self):
+        seg = self.state.active_seg
+        if seg is not None:
+            self._seg_label.setText(f"Using: {seg.summary}")
+        else:
+            self._seg_label.setText("No segmentation selected. "
+                                    "Use the Segmentation tab to run and activate one.")
+
     def _on_extract(self):
-        img_layer = self._image_combo.currentLayer()
-        seg_layer = self._segments_combo.currentLayer()
-        if img_layer is None or seg_layer is None:
+        self._update_seg_label()
+
+        seg = self.state.active_seg
+        if seg is None:
             QMessageBox.warning(
                 self, "GeoOBIA",
-                "Select both an image layer and a segment labels layer.")
+                "No active segmentation. Go to the Segmentation tab, "
+                "run a segmentation, and click 'Use for Extraction'.")
+            return
+
+        if self.state.input_layer is None:
+            QMessageBox.warning(self, "GeoOBIA", "No input raster layer set.")
             return
 
         categories = []
@@ -121,73 +128,46 @@ class FeaturesPanel(QWidget):
             return
 
         band_names_str = self._band_names_edit.text().strip()
+        log(f"Extract: categories={categories}, bands={band_names_str!r}")
 
-        self._progress.setVisible(True)
-        self._progress.setValue(0)
-        self._extract_btn.setEnabled(False)
         self._status.setText("Extracting features...")
+        self._extract_btn.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
 
-        task = _ExtractTask(
-            self.state, img_layer, seg_layer,
-            categories, band_names_str, self._on_done)
-        QgsApplication.taskManager().addTask(task)
-
-    def _on_done(self, success: bool, message: str):
-        self._progress.setVisible(False)
-        self._extract_btn.setEnabled(True)
-        self._status.setText(message)
-        if not success:
-            QMessageBox.warning(self, "GeoOBIA", message)
-
-
-class _ExtractTask(QgsTask):
-    def __init__(self, state, img_layer, seg_layer,
-                 categories, band_names_str, callback):
-        super().__init__("GeoOBIA: Extract Features")
-        self.state = state
-        self.img_source = img_layer.source()
-        self.seg_source = seg_layer.source()
-        self.categories = categories
-        self.band_names_str = band_names_str
-        self.callback = callback
-        self.error_msg = ""
-
-    def run(self):
         try:
             from geobia.io.raster import read_raster
             from geobia.features import extract
 
-            self.setProgress(5)
-            image, meta = read_raster(self.img_source)
+            source = self.state.input_layer.source()
+            image, meta = read_raster(source)
+            log(f"Image: shape={image.shape}, dtype={image.dtype}")
 
-            self.setProgress(10)
-            seg_data, _ = read_raster(self.seg_source)
-            labels = seg_data[0]
+            labels = seg.labels_array
+            log(f"Labels: shape={labels.shape}, max={labels.max()}")
 
             kwargs = {}
-            if self.band_names_str:
-                names = [n.strip() for n in self.band_names_str.split(",")]
+            if band_names_str:
+                names = [n.strip() for n in band_names_str.split(",")]
                 kwargs["band_names"] = {name: i for i, name in enumerate(names)}
 
             pixel_size = abs(meta["transform"].a) if meta.get("transform") else None
             if pixel_size:
                 kwargs["pixel_size"] = pixel_size
 
-            self.setProgress(20)
-            features = extract(image, labels, categories=self.categories, **kwargs)
+            features = extract(image, labels, categories=categories, **kwargs)
 
             self.state.features_df = features
-            self.state.meta = meta
-
-            self.setProgress(100)
             n_segs = len(features)
             n_feats = len(features.columns)
-            self.callback(True, f"{n_feats} features extracted for {n_segs} segments.")
-            return True
-        except Exception as e:
-            self.error_msg = str(e)
-            return False
+            self._status.setText(f"{n_feats} features extracted for {n_segs} segments.")
+            log(f"Extraction done: {n_feats} features x {n_segs} segments")
 
-    def finished(self, result):
-        if not result:
-            self.callback(False, f"Feature extraction failed: {self.error_msg}")
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Extract FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Feature extraction failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA", f"Feature extraction failed:\n{msg}")
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._extract_btn.setEnabled(True)

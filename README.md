@@ -6,9 +6,11 @@ A Python library and CLI for the complete OBIA pipeline: **segment** imagery int
 
 ## Features
 
-- **Segmentation** — SLIC superpixels, Felzenszwalb graph-based, Shepherd K-means+elimination (numba JIT accelerated), and optional SAM (segment-geospatial) — with tiled processing for large images
-- **Feature extraction** — Per-band spectral statistics (mean, std, min, max, median, range), band ratios (NDVI, NDWI), geometric shape features (area, perimeter, compactness, elongation, eccentricity, and more), GLCM texture features (contrast, homogeneity, energy, correlation, dissimilarity)
-- **Classification** — Supervised (Random Forest) and unsupervised (K-Means, Gaussian Mixture Model, DBSCAN), with accuracy assessment (overall accuracy, kappa, confusion matrix, cross-validation)
+- **Segmentation** — SLIC superpixels, Felzenszwalb graph-based, Shepherd K-means+elimination (pyshepseg), Watershed, and optional SAM (segment-geospatial) — with tiled processing for large images and multi-scale hierarchical segmentation
+- **Feature extraction** — Per-band spectral statistics (mean, std, min, max, median, range), band ratios (NDVI, NDWI), geometric shape features (area, perimeter, compactness, elongation, eccentricity, and more), GLCM texture features (contrast, homogeneity, energy, correlation, dissimilarity), contextual features (neighbor relationships, border contrast)
+- **Classification** — Supervised (Random Forest, SVM, Gradient Boosting), unsupervised (K-Means, GMM, DBSCAN), and rule-based fuzzy membership functions (eCognition-style), with accuracy assessment (overall accuracy, kappa, confusion matrix, cross-validation)
+- **Change detection** — Compare per-segment features between two time periods, Otsu or fixed threshold, change summary statistics
+- **Batch processing** — Process multiple raster files in parallel with `ProcessPoolExecutor`
 - **Pipeline engine** — Define segment→extract→classify pipelines as JSON, run with provenance tracking, export results to Parquet or GeoPackage
 - **Export** — GeoTIFF rasters, GeoPackage vectors, Parquet feature tables
 - **Large image support** — Tiled windowed I/O and tiled segmentation with overlap stitching, powered by rasterio
@@ -135,8 +137,11 @@ geobia segment satellite.tif -o segments.tif --method slic --n-segments 1000
 # Felzenszwalb graph-based
 geobia segment satellite.tif -o segments.tif --method felzenszwalb --scale 150 --min-size 80
 
-# Shepherd K-means + elimination (fast, numba accelerated)
+# Shepherd K-means + elimination (pyshepseg)
 geobia segment satellite.tif -o segments.tif --method shepherd --num-clusters 60 --min-size 100
+
+# Watershed (marker-based)
+geobia segment satellite.tif -o segments.tif --method watershed --markers 500 --min-distance 10
 
 # Tiled processing for large images
 geobia segment satellite.tif -o segments.tif --method slic --n-segments 500 --tiled --tile-size 4096
@@ -174,6 +179,18 @@ geobia classify features.parquet -o classified.parquet \
     --training training_samples.gpkg \
     --segments segments.tif \
     --n-estimators 200
+
+# SVM
+geobia classify features.parquet -o classified.parquet \
+    --method svm \
+    --training training_samples.gpkg \
+    --segments segments.tif
+
+# Gradient Boosting
+geobia classify features.parquet -o classified.parquet \
+    --method gradient_boosting \
+    --training training_samples.gpkg \
+    --segments segments.tif
 ```
 
 ### Export to GeoPackage
@@ -216,7 +233,8 @@ geobia export segments.tif -o result.gpkg --features features.parquet --classifi
 |-----------|-----------|----------------|
 | **SLIC** | Fast, predictable segment count, good for exploration | `n_segments`, `compactness`, `sigma` |
 | **Felzenszwalb** | Adaptive sizes, follows natural boundaries | `scale`, `sigma`, `min_size` |
-| **Shepherd** | K-means seeded, numba JIT accelerated, good for remote sensing | `num_clusters`, `min_n_pxls`, `dist_thres`, `sampling` |
+| **Shepherd** | K-means seeded, pyshepseg backend, good for remote sensing | `num_clusters`, `min_n_pxls`, `dist_thres`, `sampling` |
+| **Watershed** | Marker-based, follows gradient boundaries | `markers`, `compactness`, `min_distance` |
 | **SAM** | Deep learning foundation model (optional: `pip install geobia[sam]`) | `points_per_side`, `pred_iou_thresh` |
 
 ## Extracted features
@@ -226,6 +244,168 @@ geobia export segments.tif -o result.gpkg --features features.parquet --classifi
 **Geometric**: area (pixels and map units), perimeter, compactness, elongation, rectangularity, eccentricity, solidity, major/minor axis lengths, orientation, centroid coordinates.
 
 **Texture** (GLCM per band): contrast, dissimilarity, homogeneity, energy, correlation.
+
+**Contextual**: number of neighbors, mean/std of neighbor brightness, border contrast.
+
+## Multi-scale / hierarchical segmentation
+
+Segment at multiple scales and analyse cross-scale relationships:
+
+```python
+from geobia.segmentation.multiscale import segment_multiscale
+
+image, meta = geobia.io.read_raster("satellite.tif")
+
+# Segment at 3 scales — finest to coarsest
+hierarchy = segment_multiscale(
+    image,
+    method="slic",
+    scales=[
+        {"n_segments": 2000, "compactness": 10},  # fine
+        {"n_segments": 500, "compactness": 10},    # medium
+        {"n_segments": 50, "compactness": 10},     # coarse
+    ],
+)
+
+print(f"{hierarchy.n_levels} levels:")
+for level in hierarchy.levels:
+    print(f"  scale={level.scale}, {level.n_segments} segments")
+
+# Map each fine segment to its parent coarse segment
+parent_map = hierarchy.parent_map(fine_idx=0, coarse_idx=2)
+# {1: 3, 2: 3, 3: 7, ...} — fine segment 1 is inside coarse segment 3
+
+# Compute cross-scale features (area ratio, sibling count)
+cross_features = hierarchy.cross_scale_features(fine_idx=0, coarse_idx=1)
+print(cross_features.head())
+#              parent_id  area_ratio  n_siblings
+# segment_id
+# 1                   12        0.08          14
+# 2                   12        0.06          14
+# 3                    5        0.15           8
+
+# Use the finest level for feature extraction, enrich with cross-scale info
+features = geobia.extract_features(image, hierarchy.finest.labels)
+features = features.join(cross_features)
+```
+
+Default scales are provided if you omit the `scales` parameter — it will produce 3 levels automatically.
+
+## Fuzzy / rule-based classification
+
+Define classes using fuzzy membership functions (eCognition-style):
+
+```python
+from geobia.classification import FuzzyClassifier, FuzzyRule
+
+# Define rules for each class using trapezoidal membership functions.
+# FuzzyRule(feature, low, high) — full membership between low and high.
+# Optional low_edge/high_edge for gradual ramp-up/down.
+rules = {
+    "vegetation": [
+        FuzzyRule("ndvi", 0.3, 1.0, low_edge=0.2),         # high NDVI
+        FuzzyRule("brightness_mean", 0.0, 0.4),             # not too bright
+    ],
+    "water": [
+        FuzzyRule("ndvi", -1.0, 0.0, high_edge=0.1),       # low NDVI
+        FuzzyRule("brightness_mean", 0.0, 0.15, high_edge=0.2),  # dark
+    ],
+    "urban": [
+        FuzzyRule("ndvi", -0.1, 0.2),                       # low NDVI
+        FuzzyRule("brightness_mean", 0.3, 1.0, low_edge=0.25),   # bright
+    ],
+}
+
+clf = FuzzyClassifier(rules=rules)
+
+# Predict — each segment gets the class with highest membership (fuzzy AND of rules)
+predictions = clf.predict(features)
+
+# Inspect membership degrees per class
+memberships = clf.predict_proba(features)
+print(memberships.head())
+#              vegetation  water  urban
+# segment_id
+# 1                  0.95   0.00   0.00
+# 2                  0.80   0.00   0.10
+# 3                  0.00   0.90   0.00
+
+# Or use via the convenience function:
+predictions = geobia.classify(features, method="fuzzy", rules=rules)
+```
+
+Segments with zero membership in all classes are labelled `"unclassified"`.
+
+## Batch processing
+
+Batch processing takes a `Pipeline` and runs it on multiple files in parallel. Define your workflow once, apply it everywhere:
+
+```python
+from geobia.pipeline import Pipeline
+from geobia.batch import process_batch, batch_summary
+
+# Define the workflow once
+pipeline = Pipeline([
+    ("segment", "slic", {"n_segments": 500}),
+    ("extract", ["spectral", "geometry"], {}),
+    ("classify", "kmeans", {"n_clusters": 6}),
+])
+
+# Or load a previously saved pipeline
+# pipeline = Pipeline.load("my_pipeline.json")
+
+# Run on multiple files in parallel
+results = process_batch(
+    ["tile_01.tif", "tile_02.tif", "tile_03.tif", "tile_04.tif"],
+    output_dir="output/",
+    pipeline=pipeline,
+    max_workers=4,  # None = use all CPU cores
+    progress_callback=lambda done, total: print(f"{done}/{total}"),
+)
+
+# Check results
+summary = batch_summary(results)
+print(f"Processed {summary['succeeded']}/{summary['total']} files")
+print(f"Total segments: {summary['total_segments']}")
+print(f"Total time: {summary['total_duration_s']}s")
+
+# Access individual results
+for r in results:
+    if r.success:
+        print(f"{r.input_path}: {r.n_segments} segments, labels at {r.labels_path}")
+        print(f"  Features shape: {r.features.shape}")
+        print(f"  Classes: {r.predictions.nunique()}")
+    else:
+        print(f"{r.input_path}: FAILED — {r.error}")
+```
+
+Each file is processed independently in a separate process. Segmentation labels are saved as GeoTIFFs in the output directory. The pipeline can include any subset of steps — segmentation only, segmentation + extraction, or the full workflow.
+
+## Change detection
+
+Compare per-segment features between two time periods:
+
+```python
+from geobia.change import detect_changes, change_magnitude, change_summary
+
+# Extract features from two dates using the same segmentation
+features_2020 = geobia.extract_features(image_2020, labels)
+features_2023 = geobia.extract_features(image_2023, labels)
+
+# Compute per-segment change magnitude (Euclidean distance in feature space)
+magnitude = change_magnitude(features_2020, features_2023, normalize=True)
+
+# Classify as changed/unchanged using Otsu thresholding
+changed = detect_changes(features_2020, features_2023, threshold="otsu")
+print(f"Changed segments: {changed.sum()} / {len(changed)}")
+
+# Or use a fixed threshold
+changed = detect_changes(features_2020, features_2023, threshold=2.5)
+
+# Get a summary
+summary = change_summary(changed, features_2020, features_2023)
+print(f"{summary['pct_changed']}% of segments changed")
+```
 
 ## Pipeline engine
 

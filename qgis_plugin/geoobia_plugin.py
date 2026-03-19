@@ -37,10 +37,10 @@ class SegmentationRun:
     @property
     def summary(self):
         """Short human-readable description for the gallery list."""
-        parts = [self.method.upper()]
+        parts = [f"{self.method.upper()} [{self.n_segments} segs]"]
         for k, v in self.params.items():
             parts.append(f"{k}={v}")
-        return " | ".join(parts) + f"  [{self.n_segments} segs]"
+        return " | ".join(parts)
 
 
 class PluginState:

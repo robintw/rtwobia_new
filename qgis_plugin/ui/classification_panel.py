@@ -1,9 +1,12 @@
 """Classification workflow panel with supervised and unsupervised tabs."""
 
+import traceback
+
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QColorDialog,
     QComboBox,
     QFormLayout,
@@ -12,7 +15,6 @@ from qgis.PyQt.QtWidgets import (
     QHeaderView,
     QLabel,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -21,9 +23,11 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.core import QgsApplication, QgsTask
+from qgis.core import QgsMessageLog, Qgis
 
 from .sample_selector import SampleSelectorTool
+
+TAG = "GeoOBIA"
 
 # Default class color palette
 _PALETTE = [
@@ -31,6 +35,10 @@ _PALETTE = [
     "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
     "#dcbeff", "#9A6324", "#800000", "#aaffc3", "#808000",
 ]
+
+
+def log(msg, level=Qgis.Info):
+    QgsMessageLog.logMessage(str(msg), TAG, level)
 
 
 class ClassificationPanel(QWidget):
@@ -49,11 +57,6 @@ class ClassificationPanel(QWidget):
         self._tabs.addTab(self._build_supervised_tab(), "Supervised")
         self._tabs.addTab(self._build_unsupervised_tab(), "Unsupervised")
         layout.addWidget(self._tabs)
-
-        # Progress
-        self._progress = QProgressBar()
-        self._progress.setVisible(False)
-        layout.addWidget(self._progress)
 
         # Status
         self._status = QLabel("")
@@ -123,12 +126,9 @@ class ClassificationPanel(QWidget):
 
         # Train / Predict
         action_row = QHBoxLayout()
-        train_btn = QPushButton("Train")
+        train_btn = QPushButton("Train & Predict")
         train_btn.clicked.connect(self._on_train)
         action_row.addWidget(train_btn)
-        predict_btn = QPushButton("Predict")
-        predict_btn.clicked.connect(self._on_predict)
-        action_row.addWidget(predict_btn)
         layout.addLayout(action_row)
 
         tab.setLayout(layout)
@@ -220,7 +220,7 @@ class ClassificationPanel(QWidget):
             if labels_layer is None:
                 QMessageBox.warning(
                     self, "GeoOBIA",
-                    "Run segmentation first to create a labels layer.")
+                    "Run segmentation first and click 'Use for Extraction'.")
                 self._select_btn.setChecked(False)
                 return
 
@@ -265,20 +265,38 @@ class ClassificationPanel(QWidget):
             QMessageBox.warning(self, "GeoOBIA", "Select training samples first.")
             return
 
-        self._progress.setVisible(True)
+        n_estimators = self._sup_n_estimators.value()
+        log(f"Train: random_forest, n_estimators={n_estimators}")
+
         self._status.setText("Training...")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
 
-        task = _ClassifyTask(
-            self.state,
-            method="random_forest",
-            params={"n_estimators": self._sup_n_estimators.value()},
-            callback=self._on_classify_done,
-        )
-        QgsApplication.taskManager().addTask(task)
+        try:
+            import pandas as pd
+            from geobia.classification import classify
 
-    def _on_predict(self):
-        # Same as train for now — classify does fit + predict in one call
-        self._on_train()
+            features = self.state.features_df
+            training_labels = pd.Series(
+                self.state.training_samples, name="class_label")
+
+            predictions = classify(
+                features, method="random_forest",
+                training_labels=training_labels,
+                n_estimators=n_estimators)
+
+            self.state.predictions = predictions
+            n_classes = predictions.nunique()
+            self._status.setText(f"Classification done: {n_classes} classes.")
+            log(f"Train done: {n_classes} classes, {len(predictions)} segments")
+
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Train FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Training failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA", f"Training failed:\n{msg}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _on_cluster(self):
         if self.state.features_df is None:
@@ -290,58 +308,27 @@ class ClassificationPanel(QWidget):
         if method in ("kmeans", "gmm"):
             params["n_clusters"] = self._unsup_n_clusters.value()
 
-        self._progress.setVisible(True)
+        log(f"Cluster: {method}, params={params}")
+
         self._status.setText(f"Clustering with {method}...")
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
 
-        task = _ClassifyTask(
-            self.state, method=method, params=params,
-            callback=self._on_classify_done)
-        QgsApplication.taskManager().addTask(task)
-
-    def _on_classify_done(self, success: bool, message: str):
-        self._progress.setVisible(False)
-        self._status.setText(message)
-        if not success:
-            QMessageBox.warning(self, "GeoOBIA", message)
-
-
-class _ClassifyTask(QgsTask):
-    def __init__(self, state, method, params, callback):
-        super().__init__(f"GeoOBIA: Classify ({method})")
-        self.state = state
-        self.method = method
-        self.params = params
-        self.callback = callback
-        self.error_msg = ""
-
-    def run(self):
         try:
-            import pandas as pd
             from geobia.classification import classify
 
             features = self.state.features_df
-            training_labels = None
-
-            if self.method == "random_forest":
-                # Build training labels Series from the samples dict
-                training_labels = pd.Series(
-                    self.state.training_samples, name="class_label")
-
-            self.setProgress(20)
-            predictions = classify(
-                features, method=self.method,
-                training_labels=training_labels,
-                **self.params)
+            predictions = classify(features, method=method, **params)
 
             self.state.predictions = predictions
-            self.setProgress(100)
             n_classes = predictions.nunique()
-            self.callback(True, f"Classification done: {n_classes} classes.")
-            return True
-        except Exception as e:
-            self.error_msg = str(e)
-            return False
+            self._status.setText(f"Clustering done: {n_classes} clusters.")
+            log(f"Cluster done: {n_classes} clusters, {len(predictions)} segments")
 
-    def finished(self, result):
-        if not result:
-            self.callback(False, f"Classification failed: {self.error_msg}")
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Cluster FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Clustering failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA", f"Clustering failed:\n{msg}")
+        finally:
+            QApplication.restoreOverrideCursor()

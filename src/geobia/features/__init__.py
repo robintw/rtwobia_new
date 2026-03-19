@@ -11,11 +11,13 @@ from geobia.features.base import BaseExtractor
 from geobia.features.spectral import SpectralExtractor
 from geobia.features.geometry import GeometryExtractor
 from geobia.features.texture import TextureExtractor
+from geobia.features.context import ContextExtractor
 
 _REGISTRY: dict[str, type[BaseExtractor]] = {
     "spectral": SpectralExtractor,
     "geometry": GeometryExtractor,
     "texture": TextureExtractor,
+    "context": ContextExtractor,
 }
 
 
@@ -76,6 +78,8 @@ def _create_extractor(category: str, **kwargs) -> BaseExtractor:
             distances=kwargs.get("texture_distances"),
             levels=kwargs.get("texture_levels", 32),
         )
+    elif category == "context":
+        return cls()
     return cls()
 
 
@@ -89,6 +93,7 @@ __all__ = [
     "SpectralExtractor",
     "GeometryExtractor",
     "TextureExtractor",
+    "ContextExtractor",
     "extract",
     "list_categories",
 ]

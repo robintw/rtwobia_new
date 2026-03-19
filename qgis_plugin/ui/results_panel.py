@@ -22,11 +22,8 @@ from qgis.core import (
     QgsProject,
     QgsVectorLayer,
     QgsCategorizedSymbolRenderer,
-    QgsGraduatedSymbolRenderer,
     QgsRendererCategory,
-    QgsRendererRange,
     QgsSymbol,
-    QgsClassificationEqualInterval,
 )
 from qgis.PyQt.QtCore import QVariant
 
@@ -113,6 +110,13 @@ class ResultsPanel(QWidget):
         layout.addStretch()
         self.setLayout(layout)
 
+    def _get_active_seg(self):
+        """Get the active segmentation run, or warn the user."""
+        seg = self.state.active_seg
+        if seg is None:
+            QMessageBox.warning(self, "GeoOBIA", "No active segmentation selected.")
+        return seg
+
     def _refresh(self):
         """Rebuild the summary table from current predictions."""
         predictions = self.state.predictions
@@ -140,12 +144,12 @@ class ResultsPanel(QWidget):
         """Create/update a vector layer showing classification results."""
         mode = self._vis_mode.currentText()
 
-        if self.state.labels_array is None or self.state.meta is None:
-            QMessageBox.warning(self, "GeoOBIA", "No segmentation results available.")
+        seg = self._get_active_seg()
+        if seg is None:
             return
 
         # Create or reuse vector layer from labels
-        vlayer = self._get_or_create_vector_layer()
+        vlayer = self._get_or_create_vector_layer(seg)
         if vlayer is None:
             return
 
@@ -154,7 +158,7 @@ class ResultsPanel(QWidget):
         else:
             self._apply_outline_style(vlayer)
 
-    def _get_or_create_vector_layer(self):
+    def _get_or_create_vector_layer(self, seg):
         """Vectorize labels into a memory vector layer."""
         if self._vector_layer is not None:
             # Check if still in project
@@ -162,11 +166,7 @@ class ResultsPanel(QWidget):
                 return self._vector_layer
 
         try:
-            from geobia.utils.vectorize import vectorize_labels
-
-            labels = self.state.labels_array
-            meta = self.state.meta
-            gdf = vectorize_labels(labels, meta["transform"], meta.get("crs"))
+            gdf = seg.gdf.copy()
 
             # Join predictions if available
             if self.state.predictions is not None:
@@ -178,7 +178,8 @@ class ResultsPanel(QWidget):
                 gdf = gdf.merge(pred_df, on="segment_id", how="left")
 
             # Create memory vector layer
-            crs_str = str(meta["crs"]) if meta.get("crs") else "EPSG:4326"
+            crs = seg.meta.get("crs")
+            crs_str = str(crs) if crs else "EPSG:4326"
             vlayer = QgsVectorLayer(
                 f"Polygon?crs={crs_str}", "GeoOBIA Results", "memory")
             provider = vlayer.dataProvider()
@@ -221,7 +222,6 @@ class ResultsPanel(QWidget):
             return
 
         # Get unique class labels
-        idx = vlayer.fields().indexFromName("class_label")
         classes = sorted(set(
             f.attribute("class_label") for f in vlayer.getFeatures()
             if f.attribute("class_label")))
@@ -283,10 +283,10 @@ class ResultsPanel(QWidget):
 
     def _export_gpkg(self, path):
         try:
-            from geobia.utils.vectorize import vectorize_labels
-            labels = self.state.labels_array
-            meta = self.state.meta
-            gdf = vectorize_labels(labels, meta["transform"], meta.get("crs"))
+            seg = self._get_active_seg()
+            if seg is None:
+                return
+            gdf = seg.gdf.copy()
 
             if self.state.features_df is not None:
                 gdf = gdf.merge(
@@ -307,10 +307,11 @@ class ResultsPanel(QWidget):
 
     def _export_geotiff(self, path):
         try:
+            seg = self._get_active_seg()
+            if seg is None:
+                return
             from geobia.io.raster import write_raster
-            labels = self.state.labels_array
-            meta = self.state.meta
-            write_raster(path, labels, meta, dtype="int32")
+            write_raster(path, seg.labels_array, seg.meta, dtype="int32")
             self._status.setText(f"Exported to {path}")
         except Exception as e:
             QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")

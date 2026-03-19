@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.svm import SVC
 
 from geobia.classification.base import BaseClassifier
 
@@ -11,8 +12,7 @@ from geobia.classification.base import BaseClassifier
 class SupervisedClassifier(BaseClassifier):
     """Supervised classifier wrapping sklearn classifiers.
 
-    Currently supports Random Forest (default). Designed to be extended
-    with additional algorithms in Phase 2.
+    Supports Random Forest (default), SVM, and Gradient Boosting.
     """
 
     def __init__(
@@ -41,7 +41,30 @@ class SupervisedClassifier(BaseClassifier):
             }
             defaults.update(self.params)
             return RandomForestClassifier(**defaults)
-        raise ValueError(f"Unknown algorithm: {self.algorithm!r}")
+        elif self.algorithm == "svm":
+            defaults = {
+                "kernel": "rbf",
+                "C": 1.0,
+                "gamma": "scale",
+                "class_weight": "balanced",
+                "probability": True,
+                "random_state": 42,
+            }
+            defaults.update(self.params)
+            return SVC(**defaults)
+        elif self.algorithm == "gradient_boosting":
+            defaults = {
+                "n_estimators": 100,
+                "max_depth": 5,
+                "learning_rate": 0.1,
+                "random_state": 42,
+            }
+            defaults.update(self.params)
+            return GradientBoostingClassifier(**defaults)
+        raise ValueError(
+            f"Unknown algorithm: {self.algorithm!r}. "
+            f"Available: 'random_forest', 'svm', 'gradient_boosting'"
+        )
 
     def fit(self, features: pd.DataFrame, labels: pd.Series | None = None) -> None:
         if labels is None:

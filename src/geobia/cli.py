@@ -17,7 +17,7 @@ def cli():
 @cli.command()
 @click.argument("input_image")
 @click.option("-o", "--output", required=True, help="Output segment labels file (GeoTIFF)")
-@click.option("--method", default="slic", type=click.Choice(["slic", "felzenszwalb", "shepherd"]),
+@click.option("--method", default="slic", type=click.Choice(["slic", "felzenszwalb", "shepherd", "watershed"]),
               show_default=True, help="Segmentation algorithm")
 @click.option("--n-segments", type=int, default=500, show_default=True, help="Number of segments (SLIC)")
 @click.option("--compactness", type=float, default=10.0, show_default=True, help="Compactness (SLIC)")
@@ -26,11 +26,13 @@ def cli():
 @click.option("--num-clusters", type=int, default=60, show_default=True, help="K-means clusters (Shepherd)")
 @click.option("--dist-thres", type=float, default=100.0, show_default=True, help="Spectral distance threshold (Shepherd)")
 @click.option("--sampling", type=int, default=100, show_default=True, help="Subsampling rate (Shepherd)")
+@click.option("--markers", type=int, default=500, show_default=True, help="Number of seed markers (Watershed)")
+@click.option("--min-distance", type=int, default=10, show_default=True, help="Min distance between markers (Watershed)")
 @click.option("--sigma", type=float, default=None, help="Gaussian smoothing sigma")
 @click.option("--tiled", is_flag=True, help="Use tiled processing for large images")
 @click.option("--tile-size", type=int, default=2048, show_default=True, help="Tile size for tiled processing")
 def segment(input_image, output, method, n_segments, compactness, scale, min_size,
-            num_clusters, dist_thres, sampling, sigma, tiled, tile_size):
+            num_clusters, dist_thres, sampling, markers, min_distance, sigma, tiled, tile_size):
     """Segment an image into objects."""
     from geobia.io.raster import read_raster, write_raster
     from geobia.segmentation import segment as do_segment, segment_tiled
@@ -51,6 +53,9 @@ def segment(input_image, output, method, n_segments, compactness, scale, min_siz
         params["min_n_pxls"] = min_size
         params["dist_thres"] = dist_thres
         params["sampling"] = sampling
+    elif method == "watershed":
+        params["markers"] = markers
+        params["min_distance"] = min_distance
 
     if tiled:
         click.echo(f"Segmenting {input_image} with {method} (tiled, tile_size={tile_size})...")
@@ -73,9 +78,10 @@ def segment(input_image, output, method, n_segments, compactness, scale, min_siz
 @click.option("--spectral/--no-spectral", default=True, show_default=True, help="Extract spectral features")
 @click.option("--geometry/--no-geometry", default=True, show_default=True, help="Extract geometric features")
 @click.option("--texture/--no-texture", default=False, show_default=True, help="Extract GLCM texture features")
+@click.option("--context/--no-context", default=False, show_default=True, help="Extract contextual/neighbor features")
 @click.option("--band-names", type=str, default=None,
               help="Comma-separated band names (e.g., red,green,blue,nir)")
-def extract(input_image, segments, output, spectral, geometry, texture, band_names):
+def extract(input_image, segments, output, spectral, geometry, texture, context, band_names):
     """Extract features from segmented image."""
     from geobia.io.raster import read_raster
     from geobia.features import extract as do_extract
@@ -93,6 +99,8 @@ def extract(input_image, segments, output, spectral, geometry, texture, band_nam
         categories.append("geometry")
     if texture:
         categories.append("texture")
+    if context:
+        categories.append("context")
 
     kwargs = {}
     if band_names:
@@ -113,7 +121,7 @@ def extract(input_image, segments, output, spectral, geometry, texture, band_nam
 @click.argument("features_file")
 @click.option("-o", "--output", required=True, help="Output classified file (GeoPackage or Parquet)")
 @click.option("--method", default="random_forest",
-              type=click.Choice(["random_forest", "kmeans", "gmm", "dbscan"]),
+              type=click.Choice(["random_forest", "svm", "gradient_boosting", "kmeans", "gmm", "dbscan"]),
               show_default=True, help="Classification method")
 @click.option("--training", type=click.Path(exists=True), default=None,
               help="Training samples file (required for supervised)")
@@ -133,10 +141,13 @@ def classify(features_file, output, method, training, segments, n_clusters, n_es
     params = {}
     training_labels = None
 
+    supervised_methods = ("random_forest", "svm", "gradient_boosting")
+
     if method == "kmeans":
         params["n_clusters"] = n_clusters
-    elif method == "random_forest":
-        params["n_estimators"] = n_estimators
+    elif method in supervised_methods:
+        if method == "random_forest":
+            params["n_estimators"] = n_estimators
         if training is None:
             click.echo("Error: --training required for supervised classification", err=True)
             sys.exit(1)

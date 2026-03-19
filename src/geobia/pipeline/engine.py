@@ -195,8 +195,8 @@ class Pipeline:
         ))
         return result
 
-    def save(self, path: str | Path) -> None:
-        """Save pipeline definition to JSON."""
+    def to_json(self) -> str:
+        """Serialize pipeline definition to a JSON string."""
         definition = {
             "version": "1.0",
             "steps": [
@@ -208,12 +208,16 @@ class Pipeline:
                 for step in self.steps
             ],
         }
-        Path(path).write_text(json.dumps(definition, indent=2))
+        return json.dumps(definition, indent=2)
+
+    def save(self, path: str | Path) -> None:
+        """Save pipeline definition to JSON file."""
+        Path(path).write_text(self.to_json())
 
     @classmethod
-    def load(cls, path: str | Path) -> "Pipeline":
-        """Load a pipeline definition from JSON."""
-        definition = json.loads(Path(path).read_text())
+    def load_string(cls, json_string: str) -> "Pipeline":
+        """Load a pipeline definition from a JSON string."""
+        definition = json.loads(json_string)
         steps = []
         for step_def in definition["steps"]:
             steps.append((
@@ -222,3 +226,8 @@ class Pipeline:
                 step_def.get("params", {}),
             ))
         return cls(steps)
+
+    @classmethod
+    def load(cls, path: str | Path) -> "Pipeline":
+        """Load a pipeline definition from a JSON file."""
+        return cls.load_string(Path(path).read_text())

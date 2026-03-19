@@ -8,11 +8,13 @@ from geobia.segmentation.base import BaseSegmenter
 from geobia.segmentation.slic import SLICSegmenter
 from geobia.segmentation.felzenszwalb import FelzenszwalbSegmenter
 from geobia.segmentation.shepherd import ShepherdSegmenter
+from geobia.segmentation.watershed import WatershedSegmenter
 
 _REGISTRY: dict[str, type[BaseSegmenter]] = {
     "slic": SLICSegmenter,
     "felzenszwalb": FelzenszwalbSegmenter,
     "shepherd": ShepherdSegmenter,
+    "watershed": WatershedSegmenter,
 }
 
 # Register SAM if segment-geospatial is installed
@@ -153,6 +155,7 @@ __all__ = [
     "SLICSegmenter",
     "FelzenszwalbSegmenter",
     "ShepherdSegmenter",
+    "WatershedSegmenter",
     "create",
     "segment",
     "segment_tiled",
