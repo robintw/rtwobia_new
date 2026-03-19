@@ -1,0 +1,28 @@
+site_name: geobia
+site_description: Geographic Object-Based Image Analysis for geospatial imagery
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - geobia: api/index.md
+      - I/O: api/io.md
+      - Segmentation: api/segmentation.md
+      - Features: api/features.md
+      - Classification: api/classification.md
+      - Pipeline: api/pipeline.md
+      - Batch: api/batch.md
+      - Change Detection: api/change.md
+      - Utilities: api/utils.md
