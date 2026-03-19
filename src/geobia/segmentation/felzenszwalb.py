@@ -78,19 +78,19 @@ class FelzenszwalbSegmenter(BaseSegmenter):
                     "type": "number",
                     "default": 100.0,
                     "minimum": 0,
-                    "description": "Higher = fewer, larger segments",
+                    "description": "Controls the coarseness of segmentation. Higher values merge more aggressively, producing fewer, larger segments. Lower values preserve finer detail.",
                 },
                 "sigma": {
                     "type": "number",
                     "default": 0.8,
                     "minimum": 0,
-                    "description": "Gaussian pre-smoothing sigma",
+                    "description": "Width of Gaussian smoothing applied before segmentation. Increase to reduce noise sensitivity.",
                 },
                 "min_size": {
                     "type": "integer",
                     "default": 50,
                     "minimum": 1,
-                    "description": "Minimum segment size in pixels",
+                    "description": "Minimum segment size in pixels. Segments smaller than this are merged into the most similar neighbour.",
                 },
             },
         }

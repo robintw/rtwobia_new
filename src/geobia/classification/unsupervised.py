@@ -51,7 +51,11 @@ class UnsupervisedClassifier(BaseClassifier):
                 "random_state": 42,
                 "n_init": 3,
             }
-            defaults.update(self.params)
+            mapped = dict(self.params)
+            # Map n_clusters to n_components for GMM
+            if "n_clusters" in mapped:
+                mapped["n_components"] = mapped.pop("n_clusters")
+            defaults.update(mapped)
             return GaussianMixture(**defaults)
 
         elif self.algorithm == "dbscan":
@@ -121,3 +125,69 @@ class UnsupervisedClassifier(BaseClassifier):
             "feature_names": self.feature_names_,
             **self.params,
         }
+
+    @classmethod
+    def get_param_schema(cls, algorithm: str = "kmeans") -> dict:
+        """Return JSON Schema for the given unsupervised algorithm."""
+        schemas = {
+            "kmeans": {
+                "type": "object",
+                "properties": {
+                    "n_clusters": {
+                        "type": "integer",
+                        "default": 8,
+                        "minimum": 2,
+                        "maximum": 1000,
+                        "description": (
+                            "Number of clusters to create. Choose based on "
+                            "the expected number of land cover types in the "
+                            "scene."
+                        ),
+                    },
+                },
+            },
+            "gmm": {
+                "type": "object",
+                "properties": {
+                    "n_clusters": {
+                        "type": "integer",
+                        "default": 8,
+                        "minimum": 2,
+                        "maximum": 1000,
+                        "description": (
+                            "Number of Gaussian components (clusters). GMM "
+                            "allows soft cluster assignments, so segments "
+                            "can have partial membership in multiple clusters."
+                        ),
+                    },
+                },
+            },
+            "dbscan": {
+                "type": "object",
+                "properties": {
+                    "eps": {
+                        "type": "number",
+                        "default": 0.5,
+                        "minimum": 0.001,
+                        "maximum": 100.0,
+                        "description": (
+                            "Maximum distance between two samples to be "
+                            "considered neighbours. Smaller values create "
+                            "tighter, more numerous clusters."
+                        ),
+                    },
+                    "min_samples": {
+                        "type": "integer",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "description": (
+                            "Minimum number of samples in a neighbourhood "
+                            "to form a cluster core. Higher values ignore "
+                            "small clusters and classify them as noise."
+                        ),
+                    },
+                },
+            },
+        }
+        return schemas.get(algorithm, {"type": "object", "properties": {}})

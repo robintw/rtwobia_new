@@ -87,19 +87,19 @@ class WatershedSegmenter(BaseSegmenter):
                     "type": "integer",
                     "default": 500,
                     "minimum": 1,
-                    "description": "Maximum number of seed markers",
+                    "description": "Maximum number of seed markers placed at gradient minima. Controls the approximate number of output segments.",
                 },
                 "compactness": {
                     "type": "number",
                     "default": 0.0,
                     "minimum": 0,
-                    "description": "Compactness of watershed basins (0=no shape constraint)",
+                    "description": "Regularises segment shape. 0 means no shape constraint (segments follow gradients freely). Higher values produce more compact, rounded segments.",
                 },
                 "min_distance": {
                     "type": "integer",
                     "default": 10,
                     "minimum": 1,
-                    "description": "Minimum distance between markers in pixels",
+                    "description": "Minimum spacing between seed markers in pixels. Higher values prevent over-segmentation in textured areas.",
                 },
             },
         }

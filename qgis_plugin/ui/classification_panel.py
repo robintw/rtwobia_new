@@ -4,12 +4,13 @@ import traceback
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
+from collections import OrderedDict
+
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QColorDialog,
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QFrame,
     QGroupBox,
@@ -18,7 +19,6 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -40,6 +40,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QVariant
 
 from .sample_selector import SampleSelectorTool
+from .schema_widgets import build_param_widgets, collect_param_values, create_param_group
 
 TAG = "GeoOBIA"
 _SAMPLES_LAYER_NAME = "GeoOBIA Training Samples"
@@ -137,69 +138,27 @@ class ClassificationPanel(QWidget):
 
         method_row = QFormLayout()
         self._sup_method = QComboBox()
-        self._sup_method.addItems(["Random Forest", "SVM", "Gradient Boosting"])
+        self._sup_methods = OrderedDict([
+            ("Random Forest", "random_forest"),
+            ("SVM", "svm"),
+            ("Gradient Boosting", "gradient_boosting"),
+        ])
+        self._sup_method.addItems(self._sup_methods.keys())
         self._sup_method.currentTextChanged.connect(self._on_sup_method_changed)
         method_row.addRow("Method:", self._sup_method)
         algo_layout.addLayout(method_row)
 
-        # Per-method parameter widgets (stacked)
+        # Dynamic parameter area (rebuilt when method changes)
         self._sup_params_container = QVBoxLayout()
         algo_layout.addLayout(self._sup_params_container)
-
-        # Random Forest params
-        self._rf_widget = QWidget()
-        rf_layout = QFormLayout()
-        self._rf_n_estimators = QSpinBox()
-        self._rf_n_estimators.setRange(1, 10000)
-        self._rf_n_estimators.setValue(100)
-        rf_layout.addRow("Trees:", self._rf_n_estimators)
-        self._rf_max_depth = QSpinBox()
-        self._rf_max_depth.setRange(0, 1000)
-        self._rf_max_depth.setValue(0)
-        self._rf_max_depth.setSpecialValueText("None")
-        self._rf_max_depth.setToolTip("Maximum tree depth (0 = unlimited)")
-        rf_layout.addRow("Max depth:", self._rf_max_depth)
-        self._rf_widget.setLayout(rf_layout)
-        self._sup_params_container.addWidget(self._rf_widget)
-
-        # SVM params
-        self._svm_widget = QWidget()
-        svm_layout = QFormLayout()
-        self._svm_kernel = QComboBox()
-        self._svm_kernel.addItems(["rbf", "linear", "poly", "sigmoid"])
-        svm_layout.addRow("Kernel:", self._svm_kernel)
-        self._svm_c = QDoubleSpinBox()
-        self._svm_c.setRange(0.001, 10000.0)
-        self._svm_c.setValue(1.0)
-        self._svm_c.setDecimals(3)
-        svm_layout.addRow("C:", self._svm_c)
-        self._svm_widget.setLayout(svm_layout)
-        self._svm_widget.hide()
-        self._sup_params_container.addWidget(self._svm_widget)
-
-        # Gradient Boosting params
-        self._gb_widget = QWidget()
-        gb_layout = QFormLayout()
-        self._gb_n_estimators = QSpinBox()
-        self._gb_n_estimators.setRange(1, 10000)
-        self._gb_n_estimators.setValue(100)
-        gb_layout.addRow("Trees:", self._gb_n_estimators)
-        self._gb_max_depth = QSpinBox()
-        self._gb_max_depth.setRange(1, 100)
-        self._gb_max_depth.setValue(5)
-        gb_layout.addRow("Max depth:", self._gb_max_depth)
-        self._gb_learning_rate = QDoubleSpinBox()
-        self._gb_learning_rate.setRange(0.001, 10.0)
-        self._gb_learning_rate.setValue(0.1)
-        self._gb_learning_rate.setDecimals(3)
-        self._gb_learning_rate.setSingleStep(0.01)
-        gb_layout.addRow("Learning rate:", self._gb_learning_rate)
-        self._gb_widget.setLayout(gb_layout)
-        self._gb_widget.hide()
-        self._sup_params_container.addWidget(self._gb_widget)
+        self._sup_param_widgets = OrderedDict()
+        self._sup_param_group = None
 
         algo_group.setLayout(algo_layout)
         layout.addWidget(algo_group)
+
+        # Build initial params
+        self._on_sup_method_changed(self._sup_method.currentText())
 
         # Train / Predict
         action_row = QHBoxLayout()
@@ -218,16 +177,25 @@ class ClassificationPanel(QWidget):
         layout = QVBoxLayout()
 
         algo_group = QGroupBox("Algorithm")
-        algo_layout = QFormLayout()
+        algo_layout = QVBoxLayout()
 
+        method_row = QFormLayout()
         self._unsup_method = QComboBox()
-        self._unsup_method.addItems(["kmeans", "gmm", "dbscan"])
-        algo_layout.addRow("Method:", self._unsup_method)
+        self._unsup_methods = OrderedDict([
+            ("K-Means", "kmeans"),
+            ("GMM", "gmm"),
+            ("DBSCAN", "dbscan"),
+        ])
+        self._unsup_method.addItems(self._unsup_methods.keys())
+        self._unsup_method.currentTextChanged.connect(self._on_unsup_method_changed)
+        method_row.addRow("Method:", self._unsup_method)
+        algo_layout.addLayout(method_row)
 
-        self._unsup_n_clusters = QSpinBox()
-        self._unsup_n_clusters.setRange(2, 1000)
-        self._unsup_n_clusters.setValue(8)
-        algo_layout.addRow("Clusters:", self._unsup_n_clusters)
+        # Dynamic parameter area
+        self._unsup_params_container = QVBoxLayout()
+        algo_layout.addLayout(self._unsup_params_container)
+        self._unsup_param_widgets = OrderedDict()
+        self._unsup_param_group = None
 
         algo_group.setLayout(algo_layout)
         layout.addWidget(algo_group)
@@ -235,6 +203,9 @@ class ClassificationPanel(QWidget):
         cluster_btn = QPushButton("Cluster")
         cluster_btn.clicked.connect(self._on_cluster)
         layout.addWidget(cluster_btn)
+
+        # Build initial params
+        self._on_unsup_method_changed(self._unsup_method.currentText())
 
         tab.setLayout(layout)
         return tab
@@ -321,10 +292,42 @@ class ClassificationPanel(QWidget):
             self.state.class_colors[name] = color
 
     def _on_sup_method_changed(self, method_text):
-        """Show/hide parameter widgets for the selected supervised method."""
-        self._rf_widget.setVisible(method_text == "Random Forest")
-        self._svm_widget.setVisible(method_text == "SVM")
-        self._gb_widget.setVisible(method_text == "Gradient Boosting")
+        """Rebuild parameter widgets from schema for the selected method."""
+        from geobia.classification.supervised import SupervisedClassifier
+
+        algorithm = self._sup_methods.get(method_text, "random_forest")
+
+        self._sup_param_widgets = OrderedDict()
+        if self._sup_param_group is not None:
+            self._sup_params_container.removeWidget(self._sup_param_group)
+            self._sup_param_group.deleteLater()
+            self._sup_param_group = None
+
+        schema = SupervisedClassifier.get_param_schema(algorithm)
+        self._sup_param_widgets = build_param_widgets(schema)
+        if self._sup_param_widgets:
+            self._sup_param_group = create_param_group(
+                "Parameters", self._sup_param_widgets)
+            self._sup_params_container.addWidget(self._sup_param_group)
+
+    def _on_unsup_method_changed(self, method_text):
+        """Rebuild parameter widgets from schema for the selected method."""
+        from geobia.classification.unsupervised import UnsupervisedClassifier
+
+        algorithm = self._unsup_methods.get(method_text, "kmeans")
+
+        self._unsup_param_widgets = OrderedDict()
+        if self._unsup_param_group is not None:
+            self._unsup_params_container.removeWidget(self._unsup_param_group)
+            self._unsup_param_group.deleteLater()
+            self._unsup_param_group = None
+
+        schema = UnsupervisedClassifier.get_param_schema(algorithm)
+        self._unsup_param_widgets = build_param_widgets(schema)
+        if self._unsup_param_widgets:
+            self._unsup_param_group = create_param_group(
+                "Parameters", self._unsup_param_widgets)
+            self._unsup_params_container.addWidget(self._unsup_param_group)
 
     # ---- Sample selection ----
 
@@ -454,24 +457,17 @@ class ClassificationPanel(QWidget):
     def _get_sup_method_and_params(self):
         """Return (method_name, params_dict) for the selected supervised method."""
         method_text = self._sup_method.currentText()
-        if method_text == "Random Forest":
-            params = {"n_estimators": self._rf_n_estimators.value()}
-            depth = self._rf_max_depth.value()
-            if depth > 0:
-                params["max_depth"] = depth
-            return "random_forest", params
-        elif method_text == "SVM":
-            return "svm", {
-                "kernel": self._svm_kernel.currentText(),
-                "C": self._svm_c.value(),
-            }
-        elif method_text == "Gradient Boosting":
-            return "gradient_boosting", {
-                "n_estimators": self._gb_n_estimators.value(),
-                "max_depth": self._gb_max_depth.value(),
-                "learning_rate": self._gb_learning_rate.value(),
-            }
-        return "random_forest", {}
+        algorithm = self._sup_methods.get(method_text, "random_forest")
+        params = collect_param_values(self._sup_param_widgets)
+        # Filter None values and handle max_depth=0 as None (unlimited)
+        cleaned = {}
+        for k, v in params.items():
+            if v is None:
+                continue
+            if k == "max_depth" and v == 0:
+                continue  # 0 means unlimited, don't pass it
+            cleaned[k] = v
+        return algorithm, cleaned
 
     def _on_train(self):
         if self.state.features_df is None:
@@ -519,10 +515,10 @@ class ClassificationPanel(QWidget):
             QMessageBox.warning(self, "GeoOBIA", "Extract features first.")
             return
 
-        method = self._unsup_method.currentText()
-        params = {}
-        if method in ("kmeans", "gmm"):
-            params["n_clusters"] = self._unsup_n_clusters.value()
+        method_text = self._unsup_method.currentText()
+        method = self._unsup_methods.get(method_text, "kmeans")
+        params = collect_param_values(self._unsup_param_widgets)
+        params = {k: v for k, v in params.items() if v is not None}
 
         log(f"Cluster: {method}, params={params}")
 

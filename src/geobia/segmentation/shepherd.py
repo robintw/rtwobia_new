@@ -105,28 +105,28 @@ class ShepherdSegmenter(BaseSegmenter):
                     "type": "integer",
                     "default": 60,
                     "minimum": 2,
-                    "description": "K-means seed count (30-90 recommended)",
+                    "description": "Number of initial K-means clusters used to seed the segmentation. Values of 30-90 work well for most imagery.",
                 },
                 "min_n_pxls": {
                     "type": "integer",
                     "default": 100,
                     "minimum": 1,
-                    "description": "Minimum segment size in pixels",
+                    "description": "Minimum segment size in pixels. Segments smaller than this are iteratively merged into the most spectrally similar neighbour.",
                 },
                 "dist_thres": {
                     "default": "auto",
-                    "description": "Max spectral distance for merging ('auto' recommended)",
+                    "description": "Maximum spectral distance for merging adjacent segments. Use 'auto' to let the algorithm determine an appropriate threshold.",
                 },
                 "sampling": {
                     "type": "integer",
                     "default": 100,
                     "minimum": 1,
-                    "description": "Subsampling rate for k-means (every Nth pixel)",
+                    "description": "Subsampling rate for K-means initialisation (every Nth pixel). Higher values speed up clustering on large images.",
                 },
                 "bands": {
                     "type": "array",
                     "items": {"type": "integer"},
-                    "description": "Band indices to use (default: all)",
+                    "description": "Band indices to use for segmentation (0-based). Leave empty to use all bands.",
                 },
             },
         }

@@ -4,6 +4,7 @@ from collections import OrderedDict
 
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -46,6 +47,16 @@ def build_param_widgets(schema: dict) -> OrderedDict:
                 w.setValue(float(default))
             w.setToolTip(description)
 
+        elif ptype == "enum":
+            w = QComboBox()
+            options = prop.get("options", [])
+            w.addItems([str(o) for o in options])
+            if default is not None:
+                idx = w.findText(str(default))
+                if idx >= 0:
+                    w.setCurrentIndex(idx)
+            w.setToolTip(description)
+
         elif ptype == "boolean":
             w = QCheckBox()
             if default is not None:
@@ -79,6 +90,8 @@ def collect_param_values(widgets: OrderedDict) -> dict:
             values[name] = w.value()
         elif isinstance(w, QDoubleSpinBox):
             values[name] = w.value()
+        elif isinstance(w, QComboBox):
+            values[name] = w.currentText()
         elif isinstance(w, QCheckBox):
             values[name] = w.isChecked()
         elif isinstance(w, QLineEdit):

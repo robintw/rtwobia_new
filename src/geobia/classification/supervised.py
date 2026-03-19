@@ -113,3 +113,102 @@ class SupervisedClassifier(BaseClassifier):
             "classes": self.classes_,
             **self.params,
         }
+
+    @classmethod
+    def get_param_schema(cls, algorithm: str = "random_forest") -> dict:
+        """Return JSON Schema for the given supervised algorithm."""
+        schemas = {
+            "random_forest": {
+                "type": "object",
+                "properties": {
+                    "n_estimators": {
+                        "type": "integer",
+                        "default": 100,
+                        "minimum": 1,
+                        "maximum": 10000,
+                        "description": (
+                            "Number of decision trees in the ensemble. "
+                            "More trees generally improve accuracy but "
+                            "increase computation time."
+                        ),
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "default": 0,
+                        "minimum": 0,
+                        "maximum": 1000,
+                        "description": (
+                            "Maximum depth of each tree. 0 means unlimited "
+                            "(trees grow until leaves are pure). Lower values "
+                            "reduce overfitting but may underfit."
+                        ),
+                    },
+                },
+            },
+            "svm": {
+                "type": "object",
+                "properties": {
+                    "kernel": {
+                        "type": "enum",
+                        "options": ["rbf", "linear", "poly", "sigmoid"],
+                        "default": "rbf",
+                        "description": (
+                            "Kernel function for the SVM. 'rbf' (radial basis "
+                            "function) works well for most cases. 'linear' is "
+                            "faster and suits linearly separable classes."
+                        ),
+                    },
+                    "C": {
+                        "type": "number",
+                        "default": 1.0,
+                        "minimum": 0.001,
+                        "maximum": 10000.0,
+                        "description": (
+                            "Regularisation parameter. Higher values fit "
+                            "training data more closely (risk of overfitting). "
+                            "Lower values produce a smoother decision boundary."
+                        ),
+                    },
+                },
+            },
+            "gradient_boosting": {
+                "type": "object",
+                "properties": {
+                    "n_estimators": {
+                        "type": "integer",
+                        "default": 100,
+                        "minimum": 1,
+                        "maximum": 10000,
+                        "description": (
+                            "Number of boosting stages (trees). More stages "
+                            "can improve accuracy but increase training time "
+                            "and risk of overfitting."
+                        ),
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": (
+                            "Maximum depth of each tree. Gradient boosting "
+                            "typically uses shallow trees (3-8). Deeper trees "
+                            "capture more complex interactions but increase "
+                            "overfitting risk."
+                        ),
+                    },
+                    "learning_rate": {
+                        "type": "number",
+                        "default": 0.1,
+                        "minimum": 0.001,
+                        "maximum": 10.0,
+                        "description": (
+                            "Shrinks the contribution of each tree. Lower "
+                            "values (e.g. 0.01) need more trees but often "
+                            "generalise better. Typical range: 0.01-0.3."
+                        ),
+                    },
+                },
+            },
+        }
+        return schemas.get(algorithm, {"type": "object", "properties": {}})
