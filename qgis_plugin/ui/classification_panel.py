@@ -8,7 +8,6 @@ from collections import OrderedDict
 
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QColorDialog,
     QComboBox,
     QFormLayout,
@@ -492,34 +491,41 @@ class ClassificationPanel(QWidget):
         log(f"Train: {method}, params={params}")
 
         self._status.setText(f"Training ({method})...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
 
-        try:
-            import pandas as pd
+        # Snapshot data before entering background thread
+        import pandas as pd
+        features = self.state.features_df.copy()
+        training_labels = pd.Series(
+            dict(self.state.training_samples), name="class_label")
+
+        def work(set_progress, is_canceled):
             from geobia.classification import classify
-
-            features = self.state.features_df
-            training_labels = pd.Series(
-                self.state.training_samples, name="class_label")
-
+            set_progress(5)
             predictions = classify(
                 features, method=method,
                 training_labels=training_labels,
                 **params)
+            set_progress(100)
+            return predictions
 
+        def on_success(predictions):
             self.state.predictions = predictions
             n_classes = predictions.nunique()
             self._status.setText(f"Classification done: {n_classes} classes.")
             log(f"Train done: {n_classes} classes, {len(predictions)} segments")
 
-        except Exception:
-            msg = traceback.format_exc()
-            log(f"Train FAILED:\n{msg}", Qgis.Critical)
+        def on_failure(error_msg):
+            log(f"Train FAILED:\n{error_msg}", Qgis.Critical)
             self._status.setText("Training failed — see Log Messages.")
-            QMessageBox.warning(self, "GeoOBIA", f"Training failed:\n{msg}")
-        finally:
-            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "GeoOBIA",
+                                f"Training failed:\n{error_msg}")
+
+        from .tasks import BackgroundTask, run_task
+        task = BackgroundTask(
+            f"GeoOBIA: {method} classification",
+            work, on_success, on_failure,
+        )
+        run_task(self, task)
 
     def _on_cluster(self):
         if self.state.features_df is None:
@@ -534,24 +540,31 @@ class ClassificationPanel(QWidget):
         log(f"Cluster: {method}, params={params}")
 
         self._status.setText(f"Clustering with {method}...")
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
 
-        try:
+        features = self.state.features_df.copy()
+
+        def work(set_progress, is_canceled):
             from geobia.classification import classify
-
-            features = self.state.features_df
+            set_progress(5)
             predictions = classify(features, method=method, **params)
+            set_progress(100)
+            return predictions
 
+        def on_success(predictions):
             self.state.predictions = predictions
             n_classes = predictions.nunique()
             self._status.setText(f"Clustering done: {n_classes} clusters.")
             log(f"Cluster done: {n_classes} clusters, {len(predictions)} segments")
 
-        except Exception:
-            msg = traceback.format_exc()
-            log(f"Cluster FAILED:\n{msg}", Qgis.Critical)
+        def on_failure(error_msg):
+            log(f"Cluster FAILED:\n{error_msg}", Qgis.Critical)
             self._status.setText("Clustering failed — see Log Messages.")
-            QMessageBox.warning(self, "GeoOBIA", f"Clustering failed:\n{msg}")
-        finally:
-            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "GeoOBIA",
+                                f"Clustering failed:\n{error_msg}")
+
+        from .tasks import BackgroundTask, run_task
+        task = BackgroundTask(
+            f"GeoOBIA: {method} clustering",
+            work, on_success, on_failure,
+        )
+        run_task(self, task)

@@ -5,10 +5,8 @@ import tempfile
 import traceback
 from collections import OrderedDict
 
-from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtWidgets import (
-    QApplication,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -173,26 +171,38 @@ class SegmentationPanel(QWidget):
 
         method = self._method_combo.currentText()
         params = self._collect_params()
+        source = layer.source()
         log(f"Run: method={method}, params={params}")
 
         self._status.setText("Segmenting...")
         self._run_btn.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
 
+        # Read raster data on the GUI thread (QGIS layer access)
         try:
-            from geobia.io.raster import read_raster, write_raster
-            from geobia.segmentation import segment
-            from geobia.utils.vectorize import vectorize_labels
-            from ..geoobia_plugin import SegmentationRun
-
-            source = layer.source()
+            from geobia.io.raster import read_raster
             image, meta = read_raster(source)
             log(f"Image: shape={image.shape}, dtype={image.dtype}")
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Read FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Failed to read raster — see Log Messages.")
+            self._run_btn.setEnabled(True)
+            return
 
+        # Define work function — no QGIS access, only numpy/geobia
+        def work(set_progress, is_canceled):
+            from geobia.segmentation import segment
+            from geobia.io.raster import write_raster
+            from geobia.utils.vectorize import vectorize_labels
+
+            set_progress(5)
             labels = segment(image, method=method, **params)
             n_segments = int(labels.max())
             log(f"Segmentation done: {n_segments} segments")
+            set_progress(60)
+
+            if is_canceled():
+                return None
 
             # Save raster labels
             fd, raster_path = tempfile.mkstemp(
@@ -202,37 +212,56 @@ class SegmentationPanel(QWidget):
             )
             os.close(fd)
             write_raster(raster_path, labels, meta, dtype="int32")
+            set_progress(80)
+
+            if is_canceled():
+                return None
 
             # Vectorize
             crs = meta.get("crs")
             gdf = vectorize_labels(labels, meta["transform"], crs)
             log(f"Vectorized {len(gdf)} polygons")
+            set_progress(100)
 
-            # Create run record
+            return {
+                "labels": labels, "meta": meta, "raster_path": raster_path,
+                "gdf": gdf, "n_segments": n_segments,
+            }
+
+        def on_success(result):
+            self._run_btn.setEnabled(True)
+            if result is None:
+                self._status.setText("Segmentation canceled.")
+                return
+
+            from ..geoobia_plugin import SegmentationRun
             run = SegmentationRun(
-                method=method, params=params, labels_array=labels,
-                meta=meta, raster_path=raster_path, gdf=gdf,
-                n_segments=n_segments,
+                method=method, params=params,
+                labels_array=result["labels"], meta=result["meta"],
+                raster_path=result["raster_path"], gdf=result["gdf"],
+                n_segments=result["n_segments"],
             )
             self.state.seg_runs.append(run)
             self.state.input_layer = layer
 
-            # Add to gallery and select it
             self._gallery_list.addItem(run.summary)
             new_idx = self._gallery_list.count() - 1
             self._gallery_list.setCurrentRow(new_idx)
-            # _on_gallery_select will show it on the map
+            self._status.setText(f"{result['n_segments']} segments created.")
 
-            self._status.setText(f"{n_segments} segments created.")
-
-        except Exception:
-            msg = traceback.format_exc()
-            log(f"Run FAILED:\n{msg}", Qgis.Critical)
-            self._status.setText("Segmentation failed — see Log Messages.")
-            QMessageBox.warning(self, "GeoOBIA", f"Segmentation failed:\n{msg}")
-        finally:
-            QApplication.restoreOverrideCursor()
+        def on_failure(error_msg):
             self._run_btn.setEnabled(True)
+            log(f"Run FAILED:\n{error_msg}", Qgis.Critical)
+            self._status.setText("Segmentation failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA",
+                                f"Segmentation failed:\n{error_msg}")
+
+        from .tasks import BackgroundTask, run_task
+        task = BackgroundTask(
+            f"GeoOBIA: {method} segmentation",
+            work, on_success, on_failure,
+        )
+        run_task(self, task)
 
     # --- Gallery interactions ---
 

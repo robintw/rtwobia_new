@@ -2,10 +2,9 @@
 
 import traceback
 
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
-    QApplication,
     QCheckBox,
     QFormLayout,
     QGroupBox,
@@ -152,50 +151,63 @@ class FeaturesPanel(QWidget):
 
         self._status.setText("Extracting features...")
         self._extract_btn.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
 
+        # Read raster on GUI thread (QGIS layer access)
         try:
             from geobia.io.raster import read_raster
-            from geobia.features import extract
-
             source = self.state.input_layer.source()
             image, meta = read_raster(source)
             log(f"Image: shape={image.shape}, dtype={image.dtype}")
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Read FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Failed to read raster — see Log Messages.")
+            self._extract_btn.setEnabled(True)
+            return
 
-            labels = seg.labels_array
-            log(f"Labels: shape={labels.shape}, max={labels.max()}")
+        labels = seg.labels_array
+        log(f"Labels: shape={labels.shape}, max={labels.max()}")
 
-            kwargs = {}
-            if band_names_str:
-                names = [n.strip() for n in band_names_str.split(",")]
-                kwargs["band_names"] = {name: i for i, name in enumerate(names)}
+        kwargs = {}
+        if band_names_str:
+            names = [n.strip() for n in band_names_str.split(",")]
+            kwargs["band_names"] = {name: i for i, name in enumerate(names)}
 
-            pixel_size = abs(meta["transform"].a) if meta.get("transform") else None
-            if pixel_size:
-                kwargs["pixel_size"] = pixel_size
+        pixel_size = abs(meta["transform"].a) if meta.get("transform") else None
+        if pixel_size:
+            kwargs["pixel_size"] = pixel_size
 
+        def work(set_progress, is_canceled):
+            from geobia.features import extract
+            set_progress(5)
             features = extract(image, labels, categories=categories, **kwargs)
+            set_progress(100)
+            return features
 
+        def on_success(features):
+            self._extract_btn.setEnabled(True)
             self.state.features_df = features
             n_segs = len(features)
             n_feats = len(features.columns)
             log(f"Extraction done: {n_feats} features x {n_segs} segments")
             log(f"Feature columns: {list(features.columns)}")
-
-            # Update the vector layer in QGIS with feature attributes
             self._update_features_layer(seg, features)
+            self._status.setText(
+                f"{n_feats} features extracted for {n_segs} segments.")
 
-            self._status.setText(f"{n_feats} features extracted for {n_segs} segments.")
-
-        except Exception:
-            msg = traceback.format_exc()
-            log(f"Extract FAILED:\n{msg}", Qgis.Critical)
-            self._status.setText("Feature extraction failed — see Log Messages.")
-            QMessageBox.warning(self, "GeoOBIA", f"Feature extraction failed:\n{msg}")
-        finally:
-            QApplication.restoreOverrideCursor()
+        def on_failure(error_msg):
             self._extract_btn.setEnabled(True)
+            log(f"Extract FAILED:\n{error_msg}", Qgis.Critical)
+            self._status.setText("Feature extraction failed — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA",
+                                f"Feature extraction failed:\n{error_msg}")
+
+        from .tasks import BackgroundTask, run_task
+        task = BackgroundTask(
+            "GeoOBIA: Feature extraction",
+            work, on_success, on_failure,
+        )
+        run_task(self, task)
 
     def _update_features_layer(self, seg, features_df):
         """Create/replace a vector layer with all extracted feature attributes.
