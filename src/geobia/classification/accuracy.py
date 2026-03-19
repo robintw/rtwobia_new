@@ -112,7 +112,7 @@ def cross_validate(
     """
     common = features.index.intersection(labels.index)
     X = features.loc[common].values
-    y = labels.loc[common].values
+    y = np.asarray(labels.loc[common])
 
     scores = cross_val_score(classifier.model_, X, y, cv=cv, scoring="accuracy")
     return {
