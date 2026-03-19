@@ -15,9 +15,12 @@ class UnsupervisedClassifier(BaseClassifier):
     """Unsupervised classifier supporting K-Means, GMM, and DBSCAN.
 
     Groups segments into clusters based on feature similarity.
+    Cluster labels are 1-indexed.  For DBSCAN, label 0 means *noise*
+    (the point did not belong to any cluster).
     """
 
     ALGORITHMS = ("kmeans", "gmm", "dbscan")
+    NOISE_LABEL = 0  # DBSCAN noise / unclassified
 
     def __init__(
         self,
@@ -96,9 +99,12 @@ class UnsupervisedClassifier(BaseClassifier):
                 # of the k-th neighbor distances is a robust default.
                 self.model_.eps = float(np.median(dists[:, -1]))
             self.model_.fit(X)
-            # DBSCAN stores labels in .labels_ (-1 = noise)
+            # DBSCAN stores labels in .labels_ (-1 = noise).
+            # Shift so that: -1 -> NOISE_LABEL (0), 0 -> 1, 1 -> 2, etc.
+            raw = self.model_.labels_
+            shifted = np.where(raw == -1, self.NOISE_LABEL, raw + 1)
             self.labels_ = pd.Series(
-                self.model_.labels_ + 1,  # shift: -1->0 (noise), 0->1, etc.
+                shifted,
                 index=features.index,
                 name="cluster",
             )
@@ -115,11 +121,12 @@ class UnsupervisedClassifier(BaseClassifier):
             # or assign noise label (0) for unseen data
             if self.labels_ is not None and features.index.equals(self.labels_.index):
                 return self.labels_
-            # For new data, assign to nearest core sample's cluster
+            # For new data, assign noise label (no predict for DBSCAN)
             return pd.Series(
-                np.zeros(len(features), dtype=int),
+                self.NOISE_LABEL,
                 index=features.index,
                 name="cluster",
+                dtype=int,
             )
 
         if self.algorithm == "gmm":

@@ -46,8 +46,17 @@ class BaseClassifier(ABC):
 
     @classmethod
     def load(cls, path: str | Path) -> "BaseClassifier":
-        """Load a trained model from disk."""
+        """Load a trained model from disk.
+
+        Raises:
+            TypeError: If the loaded object is not a valid classifier state.
+        """
         state = joblib.load(path)
+        if not isinstance(state, dict):
+            raise TypeError(
+                f"Expected a dict from {path}, got {type(state).__name__}. "
+                f"The file may not contain a valid classifier."
+            )
         instance = cls.__new__(cls)
         instance._set_state(state)
         return instance

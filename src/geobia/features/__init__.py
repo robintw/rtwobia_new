@@ -54,8 +54,7 @@ def extract(
 
         # Route kwargs to the right extractor
         extractor = _create_extractor(cat, **kwargs)
-        df = extractor.extract(image, labels, **{k: v for k, v in kwargs.items()
-                                                  if k == "nodata"})
+        df = extractor.extract(image, labels, **kwargs)
         frames.append(df)
         _report((i + 1) / n_cats * 100)
 
