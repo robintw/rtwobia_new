@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from collections.abc import Generator
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 import numpy as np
 import rasterio
 from rasterio.windows import Window
+
+logger = logging.getLogger(__name__)
 
 
 def read_raster(path: str) -> tuple[np.ndarray, dict[str, Any]]:
@@ -21,9 +24,11 @@ def read_raster(path: str) -> tuple[np.ndarray, dict[str, Any]]:
         Tuple of (image array with shape (bands, height, width), metadata dict).
         Metadata includes: crs, transform, nodata, dtype, width, height, count.
     """
+    logger.debug("Reading raster: %s", path)
     with rasterio.open(path) as ds:
         image = ds.read()
         meta = _extract_meta(ds)
+    logger.debug("Read %s: shape=%s, dtype=%s", path, image.shape, image.dtype)
     return image, meta
 
 
@@ -118,6 +123,7 @@ def write_raster(
         "compress": compress,
     }
 
+    logger.debug("Writing raster: %s (shape=%s, dtype=%s)", path, data.shape, out_dtype)
     with rasterio.open(path, "w", **profile) as ds:
         ds.write(data)
 

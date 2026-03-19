@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -141,6 +144,7 @@ class Pipeline:
 
         result.image = image
 
+        logger.info("Running pipeline with %d steps", len(self.steps))
         for step_def in self.steps:
             step_type = step_def[0]
             method_or_cats = step_def[1] if len(step_def) > 1 else None

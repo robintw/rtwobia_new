@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from geobia.classification.base import BaseClassifier
 from geobia.classification.supervised import SupervisedClassifier
@@ -38,6 +41,7 @@ def classify(
     unsupervised_methods = ("kmeans", "gmm", "dbscan")
     supervised_methods = ("random_forest", "svm", "gradient_boosting")
 
+    logger.info("Classifying with method=%s (%d segments)", method, len(features))
     _report(10)
     if method in unsupervised_methods:
         clf = UnsupervisedClassifier(algorithm=method, **params)
@@ -55,6 +59,7 @@ def classify(
 
     _report(70)
     result = clf.predict(features)
+    logger.info("Classification complete: %d classes", result.nunique())
     _report(100)
     return result
 

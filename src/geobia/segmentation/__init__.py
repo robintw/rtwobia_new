@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from geobia.segmentation.base import BaseSegmenter
 from geobia.segmentation.slic import SLICSegmenter
@@ -69,8 +73,11 @@ def segment(
     if bands is not None:
         image = image[bands]
     segmenter = create(method, **params)
+    logger.info("Segmenting with %s (image shape %s)", method, image.shape)
     _report(10)
     result = segmenter.segment(image, nodata_mask=nodata_mask)
+    n_segments = int(result.max())
+    logger.info("Segmentation complete: %d segments", n_segments)
     _report(100)
     return result
 
@@ -119,6 +126,8 @@ def segment_tiled(
     max_label = 0
     segmenter = create(method, **params)
     step = tile_size - overlap
+    logger.info("Tiled segmentation: %dx%d, tile_size=%d, overlap=%d",
+                full_width, full_height, tile_size, overlap)
 
     for tile, tile_meta, window in read_raster_windows(path, tile_size=tile_size, overlap=overlap):
         labels = segmenter.segment(tile)

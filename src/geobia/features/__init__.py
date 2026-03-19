@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from geobia.features.base import BaseExtractor
 from geobia.features.spectral import SpectralExtractor
@@ -54,7 +57,9 @@ def extract(
 
         # Route kwargs to the right extractor
         extractor = _create_extractor(cat, **kwargs)
+        logger.info("Extracting %s features", cat)
         df = extractor.extract(image, labels, **kwargs)
+        logger.debug("Extracted %d features for %d segments", len(df.columns), len(df))
         frames.append(df)
         _report((i + 1) / n_cats * 100)
 
