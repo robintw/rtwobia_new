@@ -42,4 +42,5 @@ markers = [
     "slow: marks tests as slow-running",
     "spot_image: marks tests that require the SPOT_ROI.tif test image",
     "benchmark: marks benchmark tests",
+    "qgis: marks tests that require QGIS Python bindings",
 ]

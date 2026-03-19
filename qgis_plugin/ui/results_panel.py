@@ -169,7 +169,10 @@ class ResultsPanel(QWidget):
             f"{total} segments in {len(counts)} classes.")
 
     def _apply_visualization(self):
-        """Create/update a vector layer showing classification results."""
+        """Create/update a vector layer showing classification results.
+
+        Always rebuilds the layer to pick up the latest predictions.
+        """
         mode = self._vis_mode.currentText()
 
         seg = self._get_active_seg()
@@ -179,8 +182,8 @@ class ResultsPanel(QWidget):
         # Hide training samples layer so it doesn't obscure results
         self._hide_training_samples()
 
-        # Create or reuse vector layer from labels
-        vlayer = self._get_or_create_vector_layer(seg)
+        # Force rebuild so new predictions are reflected
+        vlayer = self._get_or_create_vector_layer(seg, force_rebuild=True)
         if vlayer is None:
             return
 
@@ -200,8 +203,21 @@ class ResultsPanel(QWidget):
             except (RuntimeError, Exception):
                 pass
 
-    def _get_or_create_vector_layer(self, seg):
-        """Vectorize labels into a memory vector layer."""
+    def _get_or_create_vector_layer(self, seg, force_rebuild=False):
+        """Vectorize labels into a memory vector layer.
+
+        Args:
+            seg: Active SegmentationRun.
+            force_rebuild: If True, remove the cached layer and rebuild
+                from scratch (needed when predictions change).
+        """
+        if force_rebuild and _is_layer_alive(self._vector_layer):
+            try:
+                QgsProject.instance().removeMapLayer(self._vector_layer.id())
+            except (RuntimeError, Exception):
+                pass
+            self._vector_layer = None
+
         # Check if the cached layer is still alive and in the project
         if _is_layer_alive(self._vector_layer):
             if QgsProject.instance().mapLayer(self._vector_layer.id()):
