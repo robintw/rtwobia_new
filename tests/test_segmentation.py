@@ -86,9 +86,11 @@ class TestShepherdSegmenter:
         assert params["num_clusters"] == 30
         assert params["min_n_pxls"] == 50
 
-    def test_band_selection(self, synthetic_image):
-        seg = ShepherdSegmenter(num_clusters=5, min_n_pxls=10, dist_thres="auto", sampling=10, bands=[0, 1])
-        labels = seg.segment(synthetic_image)
+    def test_band_selection_via_segment(self, synthetic_image):
+        """Band selection is handled by the top-level segment() function."""
+        labels = segment(synthetic_image, method="shepherd",
+                         num_clusters=5, min_n_pxls=10, dist_thres="auto",
+                         sampling=10, bands=[0, 1])
         assert labels.shape == (100, 100)
         assert labels.max() > 0
 

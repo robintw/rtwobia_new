@@ -28,13 +28,11 @@ class ShepherdSegmenter(BaseSegmenter):
         min_n_pxls: int = 100,
         dist_thres: float | str = "auto",
         sampling: int = 100,
-        bands: list[int] | None = None,
     ):
         self.num_clusters = num_clusters
         self.min_n_pxls = min_n_pxls
         self.dist_thres = dist_thres
         self.sampling = sampling
-        self.bands = bands
 
     def segment(
         self,
@@ -42,10 +40,6 @@ class ShepherdSegmenter(BaseSegmenter):
         nodata_mask: np.ndarray | None = None,
     ) -> np.ndarray:
         n_bands, h, w = image.shape
-
-        if self.bands is not None:
-            image = image[self.bands]
-            n_bands = len(self.bands)
 
         # pyshepseg expects integer dtype with shape (bands, rows, cols)
         # Scale float imagery to uint16 range for integer input
@@ -93,7 +87,6 @@ class ShepherdSegmenter(BaseSegmenter):
             "min_n_pxls": self.min_n_pxls,
             "dist_thres": self.dist_thres,
             "sampling": self.sampling,
-            "bands": self.bands,
         }
 
     @classmethod
@@ -122,11 +115,6 @@ class ShepherdSegmenter(BaseSegmenter):
                     "default": 100,
                     "minimum": 1,
                     "description": "Subsampling rate for K-means initialisation (every Nth pixel). Higher values speed up clustering on large images.",
-                },
-                "bands": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "Band indices to use for segmentation (0-based). Leave empty to use all bands.",
                 },
             },
         }
