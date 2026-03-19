@@ -37,9 +37,13 @@ def test_mixed_success_failure(tmp_path, synthetic_image, synthetic_meta):
     valid_path = str(tmp_path / "valid.tif")
     bands, h, w = synthetic_image.shape
     profile = {
-        "driver": "GTiff", "dtype": "float32",
-        "width": w, "height": h, "count": bands,
-        "crs": synthetic_meta["crs"], "transform": synthetic_meta["transform"],
+        "driver": "GTiff",
+        "dtype": "float32",
+        "width": w,
+        "height": h,
+        "count": bands,
+        "crs": synthetic_meta["crs"],
+        "transform": synthetic_meta["transform"],
     }
     with rasterio.open(valid_path, "w", **profile) as ds:
         ds.write(synthetic_image)
@@ -48,7 +52,9 @@ def test_mixed_success_failure(tmp_path, synthetic_image, synthetic_meta):
     output_dir = str(tmp_path / "output")
     results = process_batch(
         [valid_path, "/nonexistent/bad.tif"],
-        output_dir, pipeline=pipeline, max_workers=1,
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
     )
     assert len(results) == 2
     successes = [r for r in results if r.success]
@@ -62,9 +68,13 @@ def test_batch_creates_output_dir(tmp_path, synthetic_image, synthetic_meta):
     path = str(tmp_path / "image.tif")
     bands, h, w = synthetic_image.shape
     profile = {
-        "driver": "GTiff", "dtype": "float32",
-        "width": w, "height": h, "count": bands,
-        "crs": synthetic_meta["crs"], "transform": synthetic_meta["transform"],
+        "driver": "GTiff",
+        "dtype": "float32",
+        "width": w,
+        "height": h,
+        "count": bands,
+        "crs": synthetic_meta["crs"],
+        "transform": synthetic_meta["transform"],
     }
     with rasterio.open(path, "w", **profile) as ds:
         ds.write(synthetic_image)

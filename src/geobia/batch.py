@@ -17,6 +17,7 @@ __all__ = ["BatchResult", "process_batch", "batch_summary"]
 @dataclass
 class BatchResult:
     """Result from processing a single file."""
+
     input_path: str
     labels_path: str | None = None
     features: pd.DataFrame | None = None
@@ -122,7 +123,10 @@ def process_batch(
         futures = {
             executor.submit(
                 _process_single,
-                path, output_dir, pipeline_json, training_labels,
+                path,
+                output_dir,
+                pipeline_json,
+                training_labels,
             ): path
             for path in input_paths
         }

@@ -74,9 +74,7 @@ class UnsupervisedClassifier(BaseClassifier):
                 defaults["eps"] = self.params["eps"]
             return DBSCAN(**defaults)
 
-        raise ValueError(
-            f"Unknown algorithm: {self.algorithm!r}. Available: {self.ALGORITHMS}"
-        )
+        raise ValueError(f"Unknown algorithm: {self.algorithm!r}. Available: {self.ALGORITHMS}")
 
     def fit(self, features: pd.DataFrame, labels: pd.Series | None = None) -> None:
         self.feature_names_ = list(features.columns)
@@ -91,6 +89,7 @@ class UnsupervisedClassifier(BaseClassifier):
             # distances grow with sqrt(n_features).
             if self._auto_eps:
                 from sklearn.neighbors import NearestNeighbors
+
                 k = min(self.model_.min_samples, len(X) - 1)
                 nn = NearestNeighbors(n_neighbors=k)
                 nn.fit(X)

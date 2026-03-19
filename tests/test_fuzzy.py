@@ -11,10 +11,13 @@ from geobia.classification import classify
 @pytest.fixture
 def feature_df():
     """Feature DataFrame with known spectral values."""
-    return pd.DataFrame({
-        "ndvi": [0.7, 0.8, -0.1, 0.0, 0.25, 0.5],
-        "brightness_mean": [0.2, 0.15, 0.1, 0.08, 0.35, 0.3],
-    }, index=pd.RangeIndex(1, 7, name="segment_id"))
+    return pd.DataFrame(
+        {
+            "ndvi": [0.7, 0.8, -0.1, 0.0, 0.25, 0.5],
+            "brightness_mean": [0.2, 0.15, 0.1, 0.08, 0.35, 0.3],
+        },
+        index=pd.RangeIndex(1, 7, name="segment_id"),
+    )
 
 
 @pytest.fixture

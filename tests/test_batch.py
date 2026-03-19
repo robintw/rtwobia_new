@@ -31,12 +31,17 @@ def batch_rasters(tmp_path, synthetic_image, synthetic_meta):
 
 
 def test_batch_segment_only(batch_rasters, tmp_path):
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+        ]
+    )
     output_dir = str(tmp_path / "output")
     results = process_batch(
-        batch_rasters, output_dir, pipeline=pipeline, max_workers=1,
+        batch_rasters,
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
     )
     assert len(results) == 3
     assert all(r.success for r in results)
@@ -45,39 +50,54 @@ def test_batch_segment_only(batch_rasters, tmp_path):
 
 
 def test_batch_with_features(batch_rasters, tmp_path):
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-        ("extract", ["spectral"], {}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+            ("extract", ["spectral"], {}),
+        ]
+    )
     output_dir = str(tmp_path / "output")
     results = process_batch(
-        batch_rasters, output_dir, pipeline=pipeline, max_workers=1,
+        batch_rasters,
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
     )
     assert all(r.features is not None for r in results)
     assert all(len(r.features.columns) > 0 for r in results)
 
 
 def test_batch_with_classification(batch_rasters, tmp_path):
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-        ("extract", ["spectral"], {}),
-        ("classify", "kmeans", {"n_clusters": 3}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+            ("extract", ["spectral"], {}),
+            ("classify", "kmeans", {"n_clusters": 3}),
+        ]
+    )
     output_dir = str(tmp_path / "output")
     results = process_batch(
-        batch_rasters, output_dir, pipeline=pipeline, max_workers=1,
+        batch_rasters,
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
     )
     assert all(r.predictions is not None for r in results)
     assert all(r.predictions.nunique() > 0 for r in results)
 
 
 def test_batch_summary(batch_rasters, tmp_path):
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+        ]
+    )
     output_dir = str(tmp_path / "output")
     results = process_batch(
-        batch_rasters, output_dir, pipeline=pipeline, max_workers=1,
+        batch_rasters,
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
     )
     summary = batch_summary(results)
     assert summary["total"] == 3
@@ -88,12 +108,17 @@ def test_batch_summary(batch_rasters, tmp_path):
 
 
 def test_batch_handles_errors(tmp_path):
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+        ]
+    )
     output_dir = str(tmp_path / "output")
     results = process_batch(
-        ["/nonexistent/file.tif"], output_dir, pipeline=pipeline, max_workers=1,
+        ["/nonexistent/file.tif"],
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
     )
     assert len(results) == 1
     assert not results[0].success
@@ -101,13 +126,18 @@ def test_batch_handles_errors(tmp_path):
 
 
 def test_batch_progress_callback(batch_rasters, tmp_path):
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+        ]
+    )
     output_dir = str(tmp_path / "output")
     progress_calls = []
     results = process_batch(
-        batch_rasters, output_dir, pipeline=pipeline, max_workers=1,
+        batch_rasters,
+        output_dir,
+        pipeline=pipeline,
+        max_workers=1,
         progress_callback=lambda done, total: progress_calls.append((done, total)),
     )
     assert len(progress_calls) == 3
@@ -123,16 +153,21 @@ def test_batch_result_properties():
 
 def test_batch_from_saved_pipeline(batch_rasters, tmp_path):
     """Pipeline can be saved to JSON and used for batch processing."""
-    pipeline = Pipeline([
-        ("segment", "slic", {"n_segments": 20}),
-        ("extract", ["spectral"], {}),
-    ])
+    pipeline = Pipeline(
+        [
+            ("segment", "slic", {"n_segments": 20}),
+            ("extract", ["spectral"], {}),
+        ]
+    )
     pipeline.save(str(tmp_path / "pipeline.json"))
 
     loaded = Pipeline.load(str(tmp_path / "pipeline.json"))
     output_dir = str(tmp_path / "output")
     results = process_batch(
-        batch_rasters, output_dir, pipeline=loaded, max_workers=1,
+        batch_rasters,
+        output_dir,
+        pipeline=loaded,
+        max_workers=1,
     )
     assert all(r.success for r in results)
     assert all(r.features is not None for r in results)

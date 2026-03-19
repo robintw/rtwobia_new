@@ -31,10 +31,7 @@ def feature_difference(
     common_idx = features_t1.index.intersection(features_t2.index)
     common_cols = features_t1.columns.intersection(features_t2.columns)
     # Only numeric columns
-    numeric_cols = [
-        c for c in common_cols
-        if pd.api.types.is_numeric_dtype(features_t1[c])
-    ]
+    numeric_cols = [c for c in common_cols if pd.api.types.is_numeric_dtype(features_t1[c])]
 
     diff = features_t2.loc[common_idx, numeric_cols] - features_t1.loc[common_idx, numeric_cols]
     return diff
@@ -61,15 +58,17 @@ def change_magnitude(
         # Normalize by the pooled standard deviation from both periods
         common_idx = diff.index
         cols = diff.columns
-        pooled = pd.concat([
-            features_t1.loc[common_idx, cols],
-            features_t2.loc[common_idx, cols],
-        ])
+        pooled = pd.concat(
+            [
+                features_t1.loc[common_idx, cols],
+                features_t2.loc[common_idx, cols],
+            ]
+        )
         stds = pooled.std()
         stds = stds.replace(0, 1)  # avoid division by zero
         diff = diff / stds
 
-    magnitude = np.sqrt((diff ** 2).sum(axis=1))
+    magnitude = np.sqrt((diff**2).sum(axis=1))
     return magnitude.rename("change_magnitude")
 
 

@@ -40,6 +40,7 @@ class TestSAMAvailability:
 
     def test_registration_consistent_with_availability(self):
         from geobia.segmentation import list_methods, _REGISTRY
+
         methods = list_methods()
         # SAM is only registered if import succeeded at module load time
         assert ("sam" in methods) == ("sam" in _REGISTRY)

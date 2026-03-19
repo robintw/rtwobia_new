@@ -32,6 +32,7 @@ pytestmark = [
 @pytest.fixture(scope="module")
 def spot_image():
     from geobia.io.raster import read_raster
+
     image, meta = read_raster(str(SPOT_PATH))
     return image
 
@@ -46,6 +47,7 @@ def _count_segments(labels):
 # SLIC: more n_segments → more actual segments
 # ---------------------------------------------------------------------------
 
+
 class TestSLICProperties:
     def test_more_n_segments_gives_more_segments(self, spot_image):
         labels_few = segment(spot_image, method="slic", n_segments=100, compactness=10.0)
@@ -53,8 +55,7 @@ class TestSLICProperties:
         n_few = _count_segments(labels_few)
         n_many = _count_segments(labels_many)
         assert n_many > n_few, (
-            f"Expected more segments with n_segments=1000 ({n_many}) "
-            f"than n_segments=100 ({n_few})"
+            f"Expected more segments with n_segments=1000 ({n_many}) than n_segments=100 ({n_few})"
         )
 
     def test_higher_compactness_still_produces_segments(self, spot_image):
@@ -73,29 +74,24 @@ class TestSLICProperties:
 # Felzenszwalb: larger min_size → fewer segments
 # ---------------------------------------------------------------------------
 
+
 class TestFelzenszwalbProperties:
     def test_larger_min_size_gives_fewer_segments(self, spot_image):
-        labels_small = segment(spot_image, method="felzenszwalb",
-                               scale=100, min_size=20)
-        labels_large = segment(spot_image, method="felzenszwalb",
-                               scale=100, min_size=200)
+        labels_small = segment(spot_image, method="felzenszwalb", scale=100, min_size=20)
+        labels_large = segment(spot_image, method="felzenszwalb", scale=100, min_size=200)
         n_small = _count_segments(labels_small)
         n_large = _count_segments(labels_large)
         assert n_small > n_large, (
-            f"Expected fewer segments with min_size=200 ({n_large}) "
-            f"than min_size=20 ({n_small})"
+            f"Expected fewer segments with min_size=200 ({n_large}) than min_size=20 ({n_small})"
         )
 
     def test_larger_scale_gives_fewer_segments(self, spot_image):
-        labels_low = segment(spot_image, method="felzenszwalb",
-                             scale=50, min_size=50)
-        labels_high = segment(spot_image, method="felzenszwalb",
-                              scale=500, min_size=50)
+        labels_low = segment(spot_image, method="felzenszwalb", scale=50, min_size=50)
+        labels_high = segment(spot_image, method="felzenszwalb", scale=500, min_size=50)
         n_low = _count_segments(labels_low)
         n_high = _count_segments(labels_high)
         assert n_low > n_high, (
-            f"Expected fewer segments with scale=500 ({n_high}) "
-            f"than scale=50 ({n_low})"
+            f"Expected fewer segments with scale=500 ({n_high}) than scale=50 ({n_low})"
         )
 
     def test_produces_valid_labels(self, spot_image):
@@ -109,12 +105,11 @@ class TestFelzenszwalbProperties:
 # Shepherd: larger min_n_pxls → fewer segments
 # ---------------------------------------------------------------------------
 
+
 class TestShepherdProperties:
     def test_larger_min_pixels_gives_fewer_segments(self, spot_image):
-        labels_small = segment(spot_image, method="shepherd",
-                               num_clusters=60, min_n_pxls=50)
-        labels_large = segment(spot_image, method="shepherd",
-                               num_clusters=60, min_n_pxls=500)
+        labels_small = segment(spot_image, method="shepherd", num_clusters=60, min_n_pxls=50)
+        labels_large = segment(spot_image, method="shepherd", num_clusters=60, min_n_pxls=500)
         n_small = _count_segments(labels_small)
         n_large = _count_segments(labels_large)
         assert n_small > n_large, (
@@ -123,8 +118,7 @@ class TestShepherdProperties:
         )
 
     def test_produces_valid_labels(self, spot_image):
-        labels = segment(spot_image, method="shepherd",
-                         num_clusters=60, min_n_pxls=100)
+        labels = segment(spot_image, method="shepherd", num_clusters=60, min_n_pxls=100)
         assert labels.dtype == np.int32
         assert labels.shape == spot_image.shape[1:]
         assert labels.min() >= 0
@@ -134,22 +128,19 @@ class TestShepherdProperties:
 # Watershed: fewer markers → fewer segments
 # ---------------------------------------------------------------------------
 
+
 class TestWatershedProperties:
     def test_fewer_markers_gives_fewer_segments(self, spot_image):
-        labels_few = segment(spot_image, method="watershed",
-                             markers=100, min_distance=20)
-        labels_many = segment(spot_image, method="watershed",
-                              markers=1000, min_distance=5)
+        labels_few = segment(spot_image, method="watershed", markers=100, min_distance=20)
+        labels_many = segment(spot_image, method="watershed", markers=1000, min_distance=5)
         n_few = _count_segments(labels_few)
         n_many = _count_segments(labels_many)
         assert n_many > n_few, (
-            f"Expected more segments with markers=1000 ({n_many}) "
-            f"than markers=100 ({n_few})"
+            f"Expected more segments with markers=1000 ({n_many}) than markers=100 ({n_few})"
         )
 
     def test_produces_valid_labels(self, spot_image):
-        labels = segment(spot_image, method="watershed",
-                         markers=500, min_distance=10)
+        labels = segment(spot_image, method="watershed", markers=500, min_distance=10)
         assert labels.dtype == np.int32
         assert labels.shape == spot_image.shape[1:]
         assert labels.min() >= 0
@@ -158,6 +149,7 @@ class TestWatershedProperties:
 # ---------------------------------------------------------------------------
 # Cross-method: different methods give different results
 # ---------------------------------------------------------------------------
+
 
 class TestCrossMethodProperties:
     def test_different_methods_produce_different_results(self, spot_image):

@@ -65,7 +65,7 @@ class GeometryExtractor(BaseExtractor):
 
         # Area and perimeter in map units
         px = self.pixel_size or 1.0
-        df["area"] = df["area_px"] * (px ** 2)
+        df["area"] = df["area_px"] * (px**2)
         df["perimeter"] = df["perimeter"] * px
 
         # Compactness: 4 * pi * area / perimeter^2 (1.0 = circle)
@@ -93,10 +93,12 @@ class GeometryExtractor(BaseExtractor):
         )
 
         # Rename centroid columns
-        df = df.rename(columns={
-            "centroid-0": "centroid_y",
-            "centroid-1": "centroid_x",
-        })
+        df = df.rename(
+            columns={
+                "centroid-0": "centroid_y",
+                "centroid-1": "centroid_x",
+            }
+        )
 
         # Drop bbox columns (intermediate)
         df = df.drop(columns=["bbox-0", "bbox-1", "bbox-2", "bbox-3"], errors="ignore")

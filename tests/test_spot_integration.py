@@ -30,6 +30,7 @@ pytestmark = [
 @pytest.fixture(scope="module")
 def spot_image():
     from geobia.io.raster import read_raster
+
     image, meta = read_raster(str(SPOT_PATH))
     return image, meta
 
@@ -37,6 +38,7 @@ def spot_image():
 @pytest.fixture(scope="module")
 def spot_slic_labels(spot_image):
     from geobia.segmentation import segment
+
     image, meta = spot_image
     labels = segment(image, method="slic", n_segments=500, compactness=10.0)
     return labels
@@ -45,6 +47,7 @@ def spot_slic_labels(spot_image):
 @pytest.fixture(scope="module")
 def spot_felz_labels(spot_image):
     from geobia.segmentation import segment
+
     image, meta = spot_image
     labels = segment(image, method="felzenszwalb", scale=100, min_size=50)
     return labels
@@ -68,6 +71,7 @@ class TestSpotSegmentation:
 class TestSpotFeatureExtraction:
     def test_spectral_features(self, spot_image, spot_slic_labels):
         from geobia.features.spectral import SpectralExtractor
+
         image, meta = spot_image
         ext = SpectralExtractor()
         df = ext.extract(image, spot_slic_labels)
@@ -78,6 +82,7 @@ class TestSpotFeatureExtraction:
 
     def test_geometry_features(self, spot_image, spot_slic_labels):
         from geobia.features.geometry import GeometryExtractor
+
         image, meta = spot_image
         ext = GeometryExtractor(pixel_size=10.0)
         df = ext.extract(image, spot_slic_labels)
@@ -88,6 +93,7 @@ class TestSpotFeatureExtraction:
 
     def test_combined_features(self, spot_image, spot_slic_labels):
         from geobia.features import extract
+
         image, meta = spot_image
         df = extract(image, spot_slic_labels, pixel_size=10.0)
         assert "mean_band_0" in df.columns
@@ -115,6 +121,7 @@ class TestSpotClassification:
 
         # Create synthetic training labels from K-Means clusters
         from sklearn.cluster import KMeans
+
         km = KMeans(n_clusters=4, random_state=42, n_init=10)
         clusters = km.fit_predict(features.values)
         class_names = ["water", "vegetation", "urban", "soil"]
@@ -125,7 +132,7 @@ class TestSpotClassification:
         )
 
         # Use 50% for training
-        train_idx = features.index[:len(features) // 2]
+        train_idx = features.index[: len(features) // 2]
         train_labels = training_labels.loc[train_idx]
 
         clf = SupervisedClassifier("random_forest", n_estimators=50)

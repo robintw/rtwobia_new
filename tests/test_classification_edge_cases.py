@@ -134,6 +134,7 @@ class TestFuzzyEdgeCases:
 class TestClassifierLoadValidation:
     def test_load_non_dict_raises(self, tmp_path):
         import joblib
+
         path = str(tmp_path / "bad_model.joblib")
         joblib.dump("not_a_dict", path)
         with pytest.raises(TypeError, match="Expected a dict"):

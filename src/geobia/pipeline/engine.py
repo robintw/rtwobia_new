@@ -39,6 +39,7 @@ class PipelineResult:
         """Export results to file (GeoPackage or Parquet)."""
         if path.endswith(".gpkg") and self.labels is not None and self.meta is not None:
             from geobia.io.vector import write_vector
+
             write_vector(path, self.labels, attributes=self.predictions, meta=self.meta)
         elif path.endswith(".parquet") and self.features is not None:
             df = self.features.copy()
@@ -133,14 +134,17 @@ class Pipeline:
         # Load image if path provided
         if input_path is not None and image is None:
             from geobia.io.raster import read_raster
+
             t0 = time.perf_counter()
             image, meta = read_raster(input_path)
             result.meta = meta
-            result.steps.append(StepResult(
-                name="load",
-                duration_s=time.perf_counter() - t0,
-                metadata={"path": input_path},
-            ))
+            result.steps.append(
+                StepResult(
+                    name="load",
+                    duration_s=time.perf_counter() - t0,
+                    metadata={"path": input_path},
+                )
+            )
 
         result.image = image
 
@@ -170,11 +174,13 @@ class Pipeline:
 
         result.labels = labels
         n_segments = int(len(np.unique(labels)) - (1 if 0 in labels else 0))
-        result.steps.append(StepResult(
-            name="segment",
-            duration_s=duration,
-            metadata={"method": method, "n_segments": n_segments, **params},
-        ))
+        result.steps.append(
+            StepResult(
+                name="segment",
+                duration_s=duration,
+                metadata={"method": method, "n_segments": n_segments, **params},
+            )
+        )
         return result
 
     def _run_extract(self, result, image, categories, params):
@@ -191,11 +197,13 @@ class Pipeline:
         # Release the image array to free memory — it is no longer needed
         # after feature extraction.
         result.image = None
-        result.steps.append(StepResult(
-            name="extract",
-            duration_s=duration,
-            metadata={"categories": categories, "n_features": len(features.columns)},
-        ))
+        result.steps.append(
+            StepResult(
+                name="extract",
+                duration_s=duration,
+                metadata={"categories": categories, "n_features": len(features.columns)},
+            )
+        )
         return result
 
     def _run_classify(self, result, method, params, training):
@@ -205,9 +213,8 @@ class Pipeline:
         if training is not None:
             if isinstance(training, str):
                 from geobia.io.vector import read_training_samples
-                training_labels = read_training_samples(
-                    training, result.labels, result.meta
-                )
+
+                training_labels = read_training_samples(training, result.labels, result.meta)
             else:
                 training_labels = training
 
@@ -221,11 +228,13 @@ class Pipeline:
         duration = time.perf_counter() - t0
 
         result.predictions = predictions
-        result.steps.append(StepResult(
-            name="classify",
-            duration_s=duration,
-            metadata={"method": method, "n_classes": int(predictions.nunique())},
-        ))
+        result.steps.append(
+            StepResult(
+                name="classify",
+                duration_s=duration,
+                metadata={"method": method, "n_classes": int(predictions.nunique())},
+            )
+        )
         return result
 
     def to_json(self) -> str:
@@ -253,11 +262,13 @@ class Pipeline:
         definition = json.loads(json_string)
         steps = []
         for step_def in definition["steps"]:
-            steps.append((
-                step_def["type"],
-                step_def.get("method"),
-                step_def.get("params", {}),
-            ))
+            steps.append(
+                (
+                    step_def["type"],
+                    step_def.get("method"),
+                    step_def.get("params", {}),
+                )
+            )
         return cls(steps)
 
     @classmethod

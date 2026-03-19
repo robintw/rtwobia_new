@@ -24,33 +24,53 @@ def features_file(tmp_path, raster_file, labels_file, runner):
 class TestSegmentCommand:
     def test_segment_slic(self, runner, raster_file, tmp_path):
         output = str(tmp_path / "segments.tif")
-        result = runner.invoke(cli, [
-            "segment", raster_file,
-            "-o", output,
-            "--method", "slic",
-            "--n-segments", "20",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "segment",
+                raster_file,
+                "-o",
+                output,
+                "--method",
+                "slic",
+                "--n-segments",
+                "20",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "segments written to" in result.output
 
     def test_segment_felzenszwalb(self, runner, raster_file, tmp_path):
         output = str(tmp_path / "segments.tif")
-        result = runner.invoke(cli, [
-            "segment", raster_file,
-            "-o", output,
-            "--method", "felzenszwalb",
-            "--scale", "50",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "segment",
+                raster_file,
+                "-o",
+                output,
+                "--method",
+                "felzenszwalb",
+                "--scale",
+                "50",
+            ],
+        )
         assert result.exit_code == 0, result.output
 
 
 class TestExtractCommand:
     def test_extract_features(self, runner, raster_file, labels_file, tmp_path):
         output = str(tmp_path / "features.parquet")
-        result = runner.invoke(cli, [
-            "extract", raster_file, labels_file,
-            "-o", output,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "extract",
+                raster_file,
+                labels_file,
+                "-o",
+                output,
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "features" in result.output
 
@@ -58,52 +78,83 @@ class TestExtractCommand:
 class TestClassifyCommand:
     def test_classify_kmeans(self, runner, features_file, tmp_path):
         output = str(tmp_path / "classified.parquet")
-        result = runner.invoke(cli, [
-            "classify", features_file,
-            "-o", output,
-            "--method", "kmeans",
-            "--n-clusters", "3",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "classify",
+                features_file,
+                "-o",
+                output,
+                "--method",
+                "kmeans",
+                "--n-clusters",
+                "3",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "classified" in result.output
 
     def test_classify_to_csv(self, runner, features_file, tmp_path):
         output = str(tmp_path / "classified.csv")
-        result = runner.invoke(cli, [
-            "classify", features_file,
-            "-o", output,
-            "--method", "kmeans",
-            "--n-clusters", "3",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "classify",
+                features_file,
+                "-o",
+                output,
+                "--method",
+                "kmeans",
+                "--n-clusters",
+                "3",
+            ],
+        )
         assert result.exit_code == 0, result.output
 
     def test_classify_supervised_requires_training(self, runner, features_file, tmp_path):
         output = str(tmp_path / "classified.parquet")
-        result = runner.invoke(cli, [
-            "classify", features_file,
-            "-o", output,
-            "--method", "random_forest",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "classify",
+                features_file,
+                "-o",
+                output,
+                "--method",
+                "random_forest",
+            ],
+        )
         assert result.exit_code != 0
 
 
 class TestExportCommand:
     def test_export_gpkg(self, runner, labels_file, tmp_path):
         output = str(tmp_path / "export.gpkg")
-        result = runner.invoke(cli, [
-            "export", labels_file,
-            "-o", output,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "export",
+                labels_file,
+                "-o",
+                output,
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Exported" in result.output
 
     def test_export_with_features(self, runner, labels_file, features_file, tmp_path):
         output = str(tmp_path / "export.gpkg")
-        result = runner.invoke(cli, [
-            "export", labels_file,
-            "-o", output,
-            "--features", features_file,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "export",
+                labels_file,
+                "-o",
+                output,
+                "--features",
+                features_file,
+            ],
+        )
         assert result.exit_code == 0, result.output
 
 
@@ -140,10 +191,15 @@ class TestCLIErrors:
 
     def test_segment_missing_input(self, runner, tmp_path):
         output = str(tmp_path / "segments.tif")
-        result = runner.invoke(cli, [
-            "segment", "/nonexistent/image.tif",
-            "-o", output,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "segment",
+                "/nonexistent/image.tif",
+                "-o",
+                output,
+            ],
+        )
         assert result.exit_code != 0
 
     def test_version_flag(self, runner):

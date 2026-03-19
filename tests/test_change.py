@@ -14,18 +14,24 @@ from geobia.change import (
 
 @pytest.fixture
 def features_t1():
-    return pd.DataFrame({
-        "brightness": [0.2, 0.3, 0.4, 0.5],
-        "ndvi": [0.6, 0.7, 0.1, 0.2],
-    }, index=pd.RangeIndex(1, 5, name="segment_id"))
+    return pd.DataFrame(
+        {
+            "brightness": [0.2, 0.3, 0.4, 0.5],
+            "ndvi": [0.6, 0.7, 0.1, 0.2],
+        },
+        index=pd.RangeIndex(1, 5, name="segment_id"),
+    )
 
 
 @pytest.fixture
 def features_t2():
-    return pd.DataFrame({
-        "brightness": [0.2, 0.3, 0.8, 0.9],  # segs 3,4 changed
-        "ndvi": [0.6, 0.7, 0.5, 0.6],         # segs 3,4 changed
-    }, index=pd.RangeIndex(1, 5, name="segment_id"))
+    return pd.DataFrame(
+        {
+            "brightness": [0.2, 0.3, 0.8, 0.9],  # segs 3,4 changed
+            "ndvi": [0.6, 0.7, 0.5, 0.6],  # segs 3,4 changed
+        },
+        index=pd.RangeIndex(1, 5, name="segment_id"),
+    )
 
 
 def test_feature_difference(features_t1, features_t2):
@@ -57,8 +63,8 @@ def test_detect_changes_fixed_threshold(features_t1, features_t2):
     assert changed.dtype == bool
     assert not changed.iloc[0]  # seg 1 unchanged
     assert not changed.iloc[1]  # seg 2 unchanged
-    assert changed.iloc[2]      # seg 3 changed
-    assert changed.iloc[3]      # seg 4 changed
+    assert changed.iloc[2]  # seg 3 changed
+    assert changed.iloc[3]  # seg 4 changed
 
 
 def test_detect_changes_otsu(features_t1, features_t2):

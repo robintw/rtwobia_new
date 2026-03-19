@@ -12,7 +12,8 @@ from geobia.segmentation.multiscale import (
 
 def test_multiscale_slic(synthetic_image):
     hier = segment_multiscale(
-        synthetic_image, method="slic",
+        synthetic_image,
+        method="slic",
         scales=[
             {"n_segments": 100, "compactness": 10},
             {"n_segments": 10, "compactness": 10},
@@ -32,7 +33,8 @@ def test_multiscale_default_scales(synthetic_image):
 
 def test_parent_map(synthetic_image):
     hier = segment_multiscale(
-        synthetic_image, method="slic",
+        synthetic_image,
+        method="slic",
         scales=[
             {"n_segments": 50, "compactness": 10},
             {"n_segments": 5, "compactness": 10},
@@ -51,7 +53,8 @@ def test_parent_map(synthetic_image):
 
 def test_cross_scale_features(synthetic_image):
     hier = segment_multiscale(
-        synthetic_image, method="slic",
+        synthetic_image,
+        method="slic",
         scales=[
             {"n_segments": 50, "compactness": 10},
             {"n_segments": 5, "compactness": 10},
@@ -68,7 +71,8 @@ def test_cross_scale_features(synthetic_image):
 
 def test_multiscale_watershed(synthetic_image):
     hier = segment_multiscale(
-        synthetic_image, method="watershed",
+        synthetic_image,
+        method="watershed",
         scales=[
             {"markers": 50, "min_distance": 5},
             {"markers": 10, "min_distance": 15},
@@ -80,7 +84,8 @@ def test_multiscale_watershed(synthetic_image):
 
 def test_level_labels_shape(synthetic_image):
     hier = segment_multiscale(
-        synthetic_image, method="slic",
+        synthetic_image,
+        method="slic",
         scales=[{"n_segments": 20}],
     )
     assert hier.levels[0].labels.shape == synthetic_image.shape[1:]

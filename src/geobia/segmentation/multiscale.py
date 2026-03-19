@@ -17,6 +17,7 @@ from geobia.segmentation.base import BaseSegmenter
 @dataclass
 class SegmentationLevel:
     """One level of a multi-scale segmentation."""
+
     scale: int | float
     labels: np.ndarray
     n_segments: int
@@ -29,6 +30,7 @@ class HierarchicalSegmentation:
 
     Levels are ordered from finest (most segments) to coarsest (fewest).
     """
+
     levels: list[SegmentationLevel]
 
     @property
@@ -74,9 +76,7 @@ class HierarchicalSegmentation:
 
         return mapping
 
-    def cross_scale_features(
-        self, fine_idx: int = 0, coarse_idx: int = 1
-    ) -> pd.DataFrame:
+    def cross_scale_features(self, fine_idx: int = 0, coarse_idx: int = 1) -> pd.DataFrame:
         """Compute cross-scale features for fine segments.
 
         Features: parent segment ID, ratio of fine area to parent area,
@@ -99,18 +99,21 @@ class HierarchicalSegmentation:
 
         # Count siblings per parent
         from collections import Counter
+
         parent_child_counts = Counter(parent_map.values())
 
         records = []
         for fid, pid in parent_map.items():
             f_size = fine_sizes.get(fid, 1)
             p_size = coarse_sizes.get(pid, 1)
-            records.append({
-                "segment_id": fid,
-                "parent_id": pid,
-                "area_ratio": f_size / p_size,
-                "n_siblings": parent_child_counts.get(pid, 1),
-            })
+            records.append(
+                {
+                    "segment_id": fid,
+                    "parent_id": pid,
+                    "area_ratio": f_size / p_size,
+                    "n_siblings": parent_child_counts.get(pid, 1),
+                }
+            )
 
         return pd.DataFrame(records).set_index("segment_id")
 
@@ -152,12 +155,14 @@ def segment_multiscale(
             or n_segments
         )
 
-        levels.append(SegmentationLevel(
-            scale=scale_val,
-            labels=labels,
-            n_segments=n_segments,
-            params=scale_params,
-        ))
+        levels.append(
+            SegmentationLevel(
+                scale=scale_val,
+                labels=labels,
+                n_segments=n_segments,
+                params=scale_params,
+            )
+        )
 
     # Sort finest (most segments) to coarsest
     levels.sort(key=lambda lv: -lv.n_segments)

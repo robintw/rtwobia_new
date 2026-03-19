@@ -50,7 +50,8 @@ class TestTextureExtractor:
 
     def test_combined_with_other_features(self, synthetic_image, synthetic_labels):
         df = extract(
-            synthetic_image, synthetic_labels,
+            synthetic_image,
+            synthetic_labels,
             categories=["spectral", "geometry", "texture"],
         )
         assert "mean_band_0" in df.columns

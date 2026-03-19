@@ -3,7 +3,12 @@
 import numpy as np
 import pytest
 
-from geobia.utils.labels import count_segments, segment_sizes, relabel_sequential, get_segment_slices
+from geobia.utils.labels import (
+    count_segments,
+    segment_sizes,
+    relabel_sequential,
+    get_segment_slices,
+)
 from geobia.utils.vectorize import vectorize_labels
 
 
@@ -40,6 +45,7 @@ class TestLabelUtils:
 class TestVectorize:
     def test_vectorize_produces_geodataframe(self, synthetic_labels, synthetic_meta):
         from rasterio.transform import from_bounds
+
         gdf = vectorize_labels(
             synthetic_labels,
             synthetic_meta["transform"],

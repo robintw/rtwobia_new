@@ -14,14 +14,22 @@ def clustered_features():
     rng = np.random.RandomState(42)
     n = 25
     data = {
-        "feat_a": np.concatenate([
-            rng.normal(0, 0.3, n), rng.normal(5, 0.3, n),
-            rng.normal(0, 0.3, n), rng.normal(5, 0.3, n),
-        ]),
-        "feat_b": np.concatenate([
-            rng.normal(0, 0.3, n), rng.normal(0, 0.3, n),
-            rng.normal(5, 0.3, n), rng.normal(5, 0.3, n),
-        ]),
+        "feat_a": np.concatenate(
+            [
+                rng.normal(0, 0.3, n),
+                rng.normal(5, 0.3, n),
+                rng.normal(0, 0.3, n),
+                rng.normal(5, 0.3, n),
+            ]
+        ),
+        "feat_b": np.concatenate(
+            [
+                rng.normal(0, 0.3, n),
+                rng.normal(0, 0.3, n),
+                rng.normal(5, 0.3, n),
+                rng.normal(5, 0.3, n),
+            ]
+        ),
     }
     df = pd.DataFrame(data, index=range(1, 101))
     df.index.name = "segment_id"

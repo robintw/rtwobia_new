@@ -71,7 +71,7 @@ class SpectralExtractor(BaseExtractor):
         if nodata is not None:
             nodata_mask = np.zeros(labels.shape, dtype=bool)
             for b in range(n_bands):
-                nodata_mask |= (image[b] == nodata)
+                nodata_mask |= image[b] == nodata
             if nodata_mask.any():
                 effective_labels = labels.copy()
                 effective_labels[nodata_mask] = 0
@@ -83,7 +83,9 @@ class SpectralExtractor(BaseExtractor):
             bname = names[b]
 
             features[f"mean_{bname}"] = ndimage.mean(band_data, effective_labels, segment_ids)
-            features[f"std_{bname}"] = ndimage.standard_deviation(band_data, effective_labels, segment_ids)
+            features[f"std_{bname}"] = ndimage.standard_deviation(
+                band_data, effective_labels, segment_ids
+            )
             features[f"min_{bname}"] = ndimage.minimum(band_data, effective_labels, segment_ids)
             features[f"max_{bname}"] = ndimage.maximum(band_data, effective_labels, segment_ids)
             features[f"median_{bname}"] = ndimage.median(band_data, effective_labels, segment_ids)

@@ -25,6 +25,7 @@ pytestmark = [
 @pytest.fixture(scope="module")
 def spot_image():
     from geobia.io.raster import read_raster
+
     return read_raster(str(SPOT_PATH))
 
 
@@ -51,8 +52,10 @@ class TestShepherdBenchmark:
 
         n_segments = len(np.unique(labels)) - (1 if 0 in labels else 0)
 
-        print(f"\nShepherd on SPOT ({image.shape[1]}x{image.shape[2]}): "
-              f"{elapsed:.1f}s, {n_segments} segments")
+        print(
+            f"\nShepherd on SPOT ({image.shape[1]}x{image.shape[2]}): "
+            f"{elapsed:.1f}s, {n_segments} segments"
+        )
 
         assert labels.shape == (image.shape[1], image.shape[2])
         assert n_segments > 100
@@ -70,8 +73,12 @@ class TestShepherdBenchmark:
 
         t0 = time.perf_counter()
         shep_labels = segment(
-            image, method="shepherd",
-            num_clusters=60, min_n_pxls=100, dist_thres=100.0, sampling=100,
+            image,
+            method="shepherd",
+            num_clusters=60,
+            min_n_pxls=100,
+            dist_thres=100.0,
+            sampling=100,
         )
         shep_time = time.perf_counter() - t0
 
@@ -90,11 +97,13 @@ class TestFullPipelineBenchmark:
 
         image, meta = spot_image
 
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 500}),
-            ("extract", ["spectral", "geometry"], {}),
-            ("classify", "kmeans", {"n_clusters": 5}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 500}),
+                ("extract", ["spectral", "geometry"], {}),
+                ("classify", "kmeans", {"n_clusters": 5}),
+            ]
+        )
 
         t0 = time.perf_counter()
         result = pipeline.run(image=image, meta=meta)

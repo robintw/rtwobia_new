@@ -152,7 +152,8 @@ class TestCompositeEdgeCases:
         image = np.random.RandomState(0).rand(4, 20, 20).astype(np.float32)
         labels = np.ones((20, 20), dtype=np.int32)
         df = extract(
-            image, labels,
+            image,
+            labels,
             categories=["spectral"],
             band_names={"red": 0, "green": 1, "blue": 2, "nir": 3},
         )

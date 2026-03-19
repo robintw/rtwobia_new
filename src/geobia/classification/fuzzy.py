@@ -16,8 +16,14 @@ class FuzzyRule:
     stays 1 between b-c, ramps to 0 between c-d, and 0 above d.
     """
 
-    def __init__(self, feature: str, low: float, high: float,
-                 low_edge: float | None = None, high_edge: float | None = None):
+    def __init__(
+        self,
+        feature: str,
+        low: float,
+        high: float,
+        low_edge: float | None = None,
+        high_edge: float | None = None,
+    ):
         """
         Args:
             feature: Feature column name.
@@ -97,8 +103,8 @@ class FuzzyClassifier(BaseClassifier):
             for rule in rule_list:
                 if rule.feature not in features.columns:
                     raise ValueError(
-                        f"Feature {rule.feature!r} not found. "
-                        f"Available: {list(features.columns)}")
+                        f"Feature {rule.feature!r} not found. Available: {list(features.columns)}"
+                    )
                 rule_membership = rule.evaluate(features[rule.feature])
                 class_membership = class_membership.clip(upper=rule_membership)
             memberships[class_name] = class_membership
@@ -125,7 +131,6 @@ class FuzzyClassifier(BaseClassifier):
         rule_dict = {}
         for cls_name, rule_list in self.rules.items():
             rule_dict[cls_name] = [
-                {"feature": r.feature, "a": r.a, "b": r.b, "c": r.c, "d": r.d}
-                for r in rule_list
+                {"feature": r.feature, "a": r.a, "b": r.b, "c": r.c, "d": r.d} for r in rule_list
             ]
         return {"algorithm": "fuzzy", "rules": rule_dict}

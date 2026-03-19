@@ -14,6 +14,7 @@ from geobia.segmentation.base import BaseSegmenter
 def _check_sam_available():
     try:
         import samgeo  # noqa: F401
+
         return True
     except ImportError:
         return False

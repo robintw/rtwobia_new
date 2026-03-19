@@ -10,11 +10,13 @@ from geobia.pipeline import Pipeline
 
 class TestPipeline:
     def test_basic_pipeline(self, synthetic_image, synthetic_meta):
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 20}),
-            ("extract", ["spectral", "geometry"], {}),
-            ("classify", "kmeans", {"n_clusters": 3}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 20}),
+                ("extract", ["spectral", "geometry"], {}),
+                ("classify", "kmeans", {"n_clusters": 3}),
+            ]
+        )
         result = pipeline.run(image=synthetic_image, meta=synthetic_meta)
         assert result.labels is not None
         assert result.features is not None
@@ -22,21 +24,25 @@ class TestPipeline:
         assert result.predictions.nunique() == 3
 
     def test_pipeline_from_file(self, synthetic_image, synthetic_meta, raster_file):
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 20}),
-            ("extract", ["spectral"], {}),
-            ("classify", "kmeans", {"n_clusters": 2}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 20}),
+                ("extract", ["spectral"], {}),
+                ("classify", "kmeans", {"n_clusters": 2}),
+            ]
+        )
         result = pipeline.run(input_path=raster_file)
         assert result.labels is not None
         assert result.predictions is not None
 
     def test_save_and_load(self, tmp_path):
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 500}),
-            ("extract", ["spectral", "geometry"], {"pixel_size": 10}),
-            ("classify", "kmeans", {"n_clusters": 5}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 500}),
+                ("extract", ["spectral", "geometry"], {"pixel_size": 10}),
+                ("classify", "kmeans", {"n_clusters": 5}),
+            ]
+        )
         path = str(tmp_path / "pipeline.json")
         pipeline.save(path)
 
@@ -47,11 +53,13 @@ class TestPipeline:
         assert loaded.steps[2][0] == "classify"
 
     def test_provenance(self, synthetic_image, synthetic_meta):
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 20}),
-            ("extract", ["spectral"], {}),
-            ("classify", "kmeans", {"n_clusters": 3}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 20}),
+                ("extract", ["spectral"], {}),
+                ("classify", "kmeans", {"n_clusters": 3}),
+            ]
+        )
         result = pipeline.run(image=synthetic_image, meta=synthetic_meta)
         prov = result.provenance()
         assert "steps" in prov
@@ -59,11 +67,13 @@ class TestPipeline:
         assert len(prov["steps"]) == 3
 
     def test_export_parquet(self, tmp_path, synthetic_image, synthetic_meta):
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 20}),
-            ("extract", ["spectral"], {}),
-            ("classify", "kmeans", {"n_clusters": 3}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 20}),
+                ("extract", ["spectral"], {}),
+                ("classify", "kmeans", {"n_clusters": 3}),
+            ]
+        )
         result = pipeline.run(image=synthetic_image, meta=synthetic_meta)
         output = str(tmp_path / "result.parquet")
         result.export(output)
@@ -71,15 +81,18 @@ class TestPipeline:
         assert "class_label" in df.columns
 
     def test_export_gpkg(self, tmp_path, synthetic_image, synthetic_meta):
-        pipeline = Pipeline([
-            ("segment", "slic", {"n_segments": 20}),
-            ("extract", ["spectral"], {}),
-            ("classify", "kmeans", {"n_clusters": 3}),
-        ])
+        pipeline = Pipeline(
+            [
+                ("segment", "slic", {"n_segments": 20}),
+                ("extract", ["spectral"], {}),
+                ("classify", "kmeans", {"n_clusters": 3}),
+            ]
+        )
         result = pipeline.run(image=synthetic_image, meta=synthetic_meta)
         output = str(tmp_path / "result.gpkg")
         result.export(output)
         import geopandas as gpd
+
         gdf = gpd.read_file(output)
         assert len(gdf) > 0
 
@@ -89,11 +102,13 @@ class TestPipeline:
 
     def test_pipeline_json_roundtrip(self, tmp_path):
         path = str(tmp_path / "test.json")
-        original = Pipeline([
-            ("segment", "felzenszwalb", {"scale": 100}),
-            ("extract", ["spectral", "geometry", "texture"], {}),
-            ("classify", "random_forest", {"n_estimators": 50}),
-        ])
+        original = Pipeline(
+            [
+                ("segment", "felzenszwalb", {"scale": 100}),
+                ("extract", ["spectral", "geometry", "texture"], {}),
+                ("classify", "random_forest", {"n_estimators": 50}),
+            ]
+        )
         original.save(path)
 
         with open(path) as f:

@@ -121,13 +121,15 @@ class ContextExtractor(BaseExtractor):
                 nbr_brightness_std = 0.0
                 border_contrast = 0.0
 
-            records.append({
-                "segment_id": sid,
-                "n_neighbors": n_neighbors,
-                "nbr_brightness_mean": nbr_brightness_mean,
-                "nbr_brightness_std": nbr_brightness_std,
-                "border_contrast": border_contrast,
-            })
+            records.append(
+                {
+                    "segment_id": sid,
+                    "n_neighbors": n_neighbors,
+                    "nbr_brightness_mean": nbr_brightness_mean,
+                    "nbr_brightness_std": nbr_brightness_std,
+                    "border_contrast": border_contrast,
+                }
+            )
 
         df = pd.DataFrame(records).set_index("segment_id")
         return df

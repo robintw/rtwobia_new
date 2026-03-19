@@ -38,21 +38,29 @@ def large_raster(tmp_path, synthetic_meta):
 
 class TestSegmentTiled:
     def test_produces_labels(self, large_raster):
-        labels = segment_tiled(large_raster, method="slic", tile_size=128, overlap=32, n_segments=20)
+        labels = segment_tiled(
+            large_raster, method="slic", tile_size=128, overlap=32, n_segments=20
+        )
         assert labels.shape == (200, 200)
         assert labels.dtype == np.int32
         assert labels.max() > 0
 
     def test_no_gaps_in_output(self, large_raster):
         """Every pixel should be assigned to a segment."""
-        labels = segment_tiled(large_raster, method="slic", tile_size=128, overlap=32, n_segments=20)
+        labels = segment_tiled(
+            large_raster, method="slic", tile_size=128, overlap=32, n_segments=20
+        )
         assert (labels > 0).all()
 
     def test_writes_output_file(self, large_raster, tmp_path):
         output = str(tmp_path / "tiled_labels.tif")
         labels = segment_tiled(
-            large_raster, method="slic", tile_size=128, overlap=32,
-            output_path=output, n_segments=20,
+            large_raster,
+            method="slic",
+            tile_size=128,
+            overlap=32,
+            output_path=output,
+            n_segments=20,
         )
         with rasterio.open(output) as ds:
             assert ds.width == 200
@@ -62,17 +70,23 @@ class TestSegmentTiled:
 
     def test_tile_size_larger_than_image(self, large_raster):
         """Should work when tile_size >= image size (single tile)."""
-        labels = segment_tiled(large_raster, method="slic", tile_size=1024, overlap=0, n_segments=20)
+        labels = segment_tiled(
+            large_raster, method="slic", tile_size=1024, overlap=0, n_segments=20
+        )
         assert labels.shape == (200, 200)
         assert labels.max() > 0
 
     def test_different_methods(self, large_raster):
-        labels = segment_tiled(large_raster, method="felzenszwalb", tile_size=128, overlap=32, scale=50, min_size=20)
+        labels = segment_tiled(
+            large_raster, method="felzenszwalb", tile_size=128, overlap=32, scale=50, min_size=20
+        )
         assert labels.shape == (200, 200)
         assert labels.max() > 0
 
     def test_labels_globally_unique(self, large_raster):
         """Each tile's labels should be offset to be globally unique."""
-        labels = segment_tiled(large_raster, method="slic", tile_size=128, overlap=32, n_segments=20)
+        labels = segment_tiled(
+            large_raster, method="slic", tile_size=128, overlap=32, n_segments=20
+        )
         # The maximum label should be larger than what a single tile would produce
         assert labels.max() > 10

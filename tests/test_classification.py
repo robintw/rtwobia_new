@@ -16,18 +16,22 @@ def sample_features():
     rng = np.random.RandomState(42)
     n_per_class = 25
     data = {
-        "feat_a": np.concatenate([
-            rng.normal(0, 0.5, n_per_class),
-            rng.normal(5, 0.5, n_per_class),
-            rng.normal(0, 0.5, n_per_class),
-            rng.normal(5, 0.5, n_per_class),
-        ]),
-        "feat_b": np.concatenate([
-            rng.normal(0, 0.5, n_per_class),
-            rng.normal(0, 0.5, n_per_class),
-            rng.normal(5, 0.5, n_per_class),
-            rng.normal(5, 0.5, n_per_class),
-        ]),
+        "feat_a": np.concatenate(
+            [
+                rng.normal(0, 0.5, n_per_class),
+                rng.normal(5, 0.5, n_per_class),
+                rng.normal(0, 0.5, n_per_class),
+                rng.normal(5, 0.5, n_per_class),
+            ]
+        ),
+        "feat_b": np.concatenate(
+            [
+                rng.normal(0, 0.5, n_per_class),
+                rng.normal(0, 0.5, n_per_class),
+                rng.normal(5, 0.5, n_per_class),
+                rng.normal(5, 0.5, n_per_class),
+            ]
+        ),
     }
     df = pd.DataFrame(data, index=range(1, 101))
     df.index.name = "segment_id"
@@ -37,12 +41,7 @@ def sample_features():
 @pytest.fixture
 def sample_labels():
     """Training labels for 4 classes."""
-    labels = (
-        ["vegetation"] * 25
-        + ["urban"] * 25
-        + ["water"] * 25
-        + ["soil"] * 25
-    )
+    labels = ["vegetation"] * 25 + ["urban"] * 25 + ["water"] * 25 + ["soil"] * 25
     return pd.Series(labels, index=range(1, 101), name="class_label")
 
 
@@ -147,6 +146,7 @@ class TestClassifyConvenience:
         assert len(preds) == 100
 
     def test_random_forest(self, sample_features, sample_labels):
-        preds = classify(sample_features, method="random_forest",
-                         training_labels=sample_labels, n_estimators=20)
+        preds = classify(
+            sample_features, method="random_forest", training_labels=sample_labels, n_estimators=20
+        )
         assert len(preds) == 100

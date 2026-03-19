@@ -24,6 +24,7 @@ _REGISTRY: dict[str, type[BaseSegmenter]] = {
 # Register SAM if segment-geospatial is installed
 try:
     from geobia.segmentation.sam import SAMSegmenter
+
     _REGISTRY["sam"] = SAMSegmenter
 except ImportError:
     pass
@@ -126,8 +127,13 @@ def segment_tiled(
     max_label = 0
     segmenter = create(method, **params)
     step = tile_size - overlap
-    logger.info("Tiled segmentation: %dx%d, tile_size=%d, overlap=%d",
-                full_width, full_height, tile_size, overlap)
+    logger.info(
+        "Tiled segmentation: %dx%d, tile_size=%d, overlap=%d",
+        full_width,
+        full_height,
+        tile_size,
+        overlap,
+    )
 
     for tile, tile_meta, window in read_raster_windows(path, tile_size=tile_size, overlap=overlap):
         labels = segmenter.segment(tile)
@@ -154,9 +160,9 @@ def segment_tiled(
         out_r_end = row_off + core_r_end
         out_c_end = col_off + core_c_end
 
-        result[out_r_start:out_r_end, out_c_start:out_c_end] = (
-            labels[core_r_start:core_r_end, core_c_start:core_c_end]
-        )
+        result[out_r_start:out_r_end, out_c_start:out_c_end] = labels[
+            core_r_start:core_r_end, core_c_start:core_c_end
+        ]
 
         if tile_mask.any():
             max_label = int(labels.max())

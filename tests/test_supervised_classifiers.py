@@ -13,10 +13,13 @@ def training_data():
     """Create simple training features and labels."""
     rng = np.random.RandomState(42)
     n = 100
-    features = pd.DataFrame({
-        "f1": np.concatenate([rng.normal(0, 1, n // 2), rng.normal(3, 1, n // 2)]),
-        "f2": np.concatenate([rng.normal(0, 1, n // 2), rng.normal(3, 1, n // 2)]),
-    }, index=range(1, n + 1))
+    features = pd.DataFrame(
+        {
+            "f1": np.concatenate([rng.normal(0, 1, n // 2), rng.normal(3, 1, n // 2)]),
+            "f2": np.concatenate([rng.normal(0, 1, n // 2), rng.normal(3, 1, n // 2)]),
+        },
+        index=range(1, n + 1),
+    )
     features.index.name = "segment_id"
 
     labels = pd.Series(
@@ -71,8 +74,7 @@ def test_svm_via_convenience(training_data):
 
 def test_gradient_boosting_via_convenience(training_data):
     features, labels = training_data
-    preds = classify(features, method="gradient_boosting",
-                     training_labels=labels, n_estimators=20)
+    preds = classify(features, method="gradient_boosting", training_labels=labels, n_estimators=20)
     assert len(preds) == len(features)
 
 

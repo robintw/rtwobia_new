@@ -31,6 +31,7 @@ pytestmark = pytest.mark.qgis
 # QGIS application fixture (session-scoped)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session", autouse=True)
 def qgis_app():
     """Initialize a QGIS application for the test session."""
@@ -53,6 +54,7 @@ def processing_feedback():
 # ---------------------------------------------------------------------------
 # Helper: create a temporary 4-band GeoTIFF
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_raster(tmp_path):
@@ -82,6 +84,7 @@ def sample_raster(tmp_path):
 # Provider tests
 # ---------------------------------------------------------------------------
 
+
 class TestGeobiaProvider:
     def test_provider_loads(self):
         from qgis_plugin.processing.provider import GeobiaProvider
@@ -107,6 +110,7 @@ class TestGeobiaProvider:
 # ---------------------------------------------------------------------------
 # Algorithm metadata tests
 # ---------------------------------------------------------------------------
+
 
 class TestSegmentationAlgorithmMeta:
     def test_metadata(self):
@@ -241,9 +245,9 @@ class TestMultiscaleAlgorithmMeta:
 # End-to-end algorithm tests
 # ---------------------------------------------------------------------------
 
+
 class TestSegmentationAlgorithmRun:
-    def test_segment_slic(self, sample_raster, tmp_path,
-                          processing_context, processing_feedback):
+    def test_segment_slic(self, sample_raster, tmp_path, processing_context, processing_feedback):
         from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
 
         alg = SegmentationAlgorithm()
@@ -262,13 +266,15 @@ class TestSegmentationAlgorithmRun:
         assert os.path.exists(result["OUTPUT"])
 
         import rasterio
+
         with rasterio.open(result["OUTPUT"]) as ds:
             labels = ds.read(1)
             assert labels.shape == (50, 50)
             assert labels.max() > 0
 
-    def test_segment_felzenszwalb(self, sample_raster, tmp_path,
-                                  processing_context, processing_feedback):
+    def test_segment_felzenszwalb(
+        self, sample_raster, tmp_path, processing_context, processing_feedback
+    ):
         from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
 
         alg = SegmentationAlgorithm()
@@ -288,8 +294,9 @@ class TestSegmentationAlgorithmRun:
 
 
 class TestFeatureExtractionAlgorithmRun:
-    def test_extract_spectral(self, sample_raster, tmp_path,
-                               processing_context, processing_feedback):
+    def test_extract_spectral(
+        self, sample_raster, tmp_path, processing_context, processing_feedback
+    ):
         from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
         from qgis_plugin.processing.features_alg import FeatureExtractionAlgorithm
 
@@ -297,39 +304,49 @@ class TestFeatureExtractionAlgorithmRun:
         seg_alg = SegmentationAlgorithm()
         seg_alg.initAlgorithm()
         labels_path = str(tmp_path / "labels.tif")
-        seg_result = seg_alg.processAlgorithm({
-            "INPUT": sample_raster,
-            "METHOD": 0,
-            "N_SEGMENTS": 20,
-            "COMPACTNESS": 10.0,
-            "SIGMA": 0.0,
-            "OUTPUT": labels_path,
-        }, processing_context, processing_feedback)
+        seg_result = seg_alg.processAlgorithm(
+            {
+                "INPUT": sample_raster,
+                "METHOD": 0,
+                "N_SEGMENTS": 20,
+                "COMPACTNESS": 10.0,
+                "SIGMA": 0.0,
+                "OUTPUT": labels_path,
+            },
+            processing_context,
+            processing_feedback,
+        )
 
         # Then extract features
         feat_alg = FeatureExtractionAlgorithm()
         feat_alg.initAlgorithm()
         output_path = str(tmp_path / "features.parquet")
-        result = feat_alg.processAlgorithm({
-            "INPUT": sample_raster,
-            "SEGMENTS": seg_result["OUTPUT"],
-            "SPECTRAL": True,
-            "GEOMETRY": True,
-            "TEXTURE": False,
-            "BAND_NAMES": "",
-            "OUTPUT": output_path,
-        }, processing_context, processing_feedback)
+        result = feat_alg.processAlgorithm(
+            {
+                "INPUT": sample_raster,
+                "SEGMENTS": seg_result["OUTPUT"],
+                "SPECTRAL": True,
+                "GEOMETRY": True,
+                "TEXTURE": False,
+                "BAND_NAMES": "",
+                "OUTPUT": output_path,
+            },
+            processing_context,
+            processing_feedback,
+        )
 
         assert os.path.exists(result["OUTPUT"])
         import pandas as pd
+
         df = pd.read_parquet(result["OUTPUT"])
         assert len(df) > 0
         assert "mean_band_0" in df.columns
 
 
 class TestClassificationAlgorithmRun:
-    def test_unsupervised_kmeans(self, sample_raster, tmp_path,
-                                  processing_context, processing_feedback):
+    def test_unsupervised_kmeans(
+        self, sample_raster, tmp_path, processing_context, processing_feedback
+    ):
         from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
         from qgis_plugin.processing.features_alg import FeatureExtractionAlgorithm
         from qgis_plugin.processing.classification_alg import ClassificationAlgorithm
@@ -338,42 +355,55 @@ class TestClassificationAlgorithmRun:
         seg_alg = SegmentationAlgorithm()
         seg_alg.initAlgorithm()
         labels_path = str(tmp_path / "labels.tif")
-        seg_alg.processAlgorithm({
-            "INPUT": sample_raster,
-            "METHOD": 0,
-            "N_SEGMENTS": 20,
-            "COMPACTNESS": 10.0,
-            "SIGMA": 0.0,
-            "OUTPUT": labels_path,
-        }, processing_context, processing_feedback)
+        seg_alg.processAlgorithm(
+            {
+                "INPUT": sample_raster,
+                "METHOD": 0,
+                "N_SEGMENTS": 20,
+                "COMPACTNESS": 10.0,
+                "SIGMA": 0.0,
+                "OUTPUT": labels_path,
+            },
+            processing_context,
+            processing_feedback,
+        )
 
         # Extract features
         feat_alg = FeatureExtractionAlgorithm()
         feat_alg.initAlgorithm()
         features_path = str(tmp_path / "features.parquet")
-        feat_alg.processAlgorithm({
-            "INPUT": sample_raster,
-            "SEGMENTS": labels_path,
-            "SPECTRAL": True,
-            "GEOMETRY": False,
-            "TEXTURE": False,
-            "BAND_NAMES": "",
-            "OUTPUT": features_path,
-        }, processing_context, processing_feedback)
+        feat_alg.processAlgorithm(
+            {
+                "INPUT": sample_raster,
+                "SEGMENTS": labels_path,
+                "SPECTRAL": True,
+                "GEOMETRY": False,
+                "TEXTURE": False,
+                "BAND_NAMES": "",
+                "OUTPUT": features_path,
+            },
+            processing_context,
+            processing_feedback,
+        )
 
         # Classify
         cls_alg = ClassificationAlgorithm()
         cls_alg.initAlgorithm()
         output_path = str(tmp_path / "classified.parquet")
-        result = cls_alg.processAlgorithm({
-            "FEATURES": features_path,
-            "METHOD": 3,  # kmeans
-            "N_CLUSTERS": 3,
-            "OUTPUT": output_path,
-        }, processing_context, processing_feedback)
+        result = cls_alg.processAlgorithm(
+            {
+                "FEATURES": features_path,
+                "METHOD": 3,  # kmeans
+                "N_CLUSTERS": 3,
+                "OUTPUT": output_path,
+            },
+            processing_context,
+            processing_feedback,
+        )
 
         assert os.path.exists(result["OUTPUT"])
         import pandas as pd
+
         df = pd.read_parquet(result["OUTPUT"])
         assert "class_label" in df.columns
         assert df["class_label"].nunique() == 3

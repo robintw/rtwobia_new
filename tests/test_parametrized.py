@@ -11,6 +11,7 @@ from geobia.classification import classify
 
 # --- Segmentation ---
 
+
 @pytest.mark.parametrize("method", ["slic", "felzenszwalb", "watershed"])
 def test_segmentation_produces_valid_labels(method, synthetic_image):
     params = {
@@ -40,6 +41,7 @@ def test_segmentation_respects_nodata(method, synthetic_image):
 
 # --- Feature extraction ---
 
+
 @pytest.mark.parametrize("category", ["spectral", "geometry", "texture", "context"])
 def test_feature_category_produces_output(category, synthetic_image, synthetic_labels):
     df = extract(synthetic_image, synthetic_labels, categories=[category])
@@ -48,12 +50,15 @@ def test_feature_category_produces_output(category, synthetic_image, synthetic_l
     assert df.index.name == "segment_id"
 
 
-@pytest.mark.parametrize("categories", [
-    ["spectral"],
-    ["spectral", "geometry"],
-    ["spectral", "geometry", "texture"],
-    ["spectral", "geometry", "texture", "context"],
-])
+@pytest.mark.parametrize(
+    "categories",
+    [
+        ["spectral"],
+        ["spectral", "geometry"],
+        ["spectral", "geometry", "texture"],
+        ["spectral", "geometry", "texture", "context"],
+    ],
+)
 def test_feature_category_combinations(categories, synthetic_image, synthetic_labels):
     df = extract(synthetic_image, synthetic_labels, categories=categories)
     assert len(df) == 4
@@ -61,6 +66,7 @@ def test_feature_category_combinations(categories, synthetic_image, synthetic_la
 
 
 # --- Classification ---
+
 
 @pytest.fixture
 def class_features():
@@ -78,7 +84,9 @@ def class_features():
 @pytest.fixture
 def class_labels():
     return pd.Series(
-        ["A"] * 20 + ["B"] * 20, index=range(1, 41), name="class_label",
+        ["A"] * 20 + ["B"] * 20,
+        index=range(1, 41),
+        name="class_label",
     )
 
 
@@ -89,26 +97,38 @@ def test_unsupervised_methods(method, class_features):
     assert preds.nunique() >= 1
 
 
-@pytest.mark.parametrize("method,params", [
-    ("random_forest", {"n_estimators": 10}),
-    ("svm", {}),
-    ("gradient_boosting", {"n_estimators": 10}),
-])
+@pytest.mark.parametrize(
+    "method,params",
+    [
+        ("random_forest", {"n_estimators": 10}),
+        ("svm", {}),
+        ("gradient_boosting", {"n_estimators": 10}),
+    ],
+)
 def test_supervised_methods(method, params, class_features, class_labels):
     preds = classify(
-        class_features, method=method, training_labels=class_labels, **params,
+        class_features,
+        method=method,
+        training_labels=class_labels,
+        **params,
     )
     assert len(preds) == 40
 
 
-@pytest.mark.parametrize("method,params", [
-    ("random_forest", {"n_estimators": 20}),
-    ("svm", {}),
-    ("gradient_boosting", {"n_estimators": 20}),
-])
+@pytest.mark.parametrize(
+    "method,params",
+    [
+        ("random_forest", {"n_estimators": 20}),
+        ("svm", {}),
+        ("gradient_boosting", {"n_estimators": 20}),
+    ],
+)
 def test_supervised_accuracy(method, params, class_features, class_labels):
     preds = classify(
-        class_features, method=method, training_labels=class_labels, **params,
+        class_features,
+        method=method,
+        training_labels=class_labels,
+        **params,
     )
     accuracy = (preds == class_labels).mean()
     assert accuracy > 0.8
