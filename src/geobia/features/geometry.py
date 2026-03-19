@@ -32,6 +32,8 @@ class GeometryExtractor(BaseExtractor):
         labels: np.ndarray,
         **kwargs,
     ) -> pd.DataFrame:
+        if labels.ndim != 2:
+            raise ValueError(f"Expected 2D labels array, got {labels.ndim}D")
         segment_ids = np.unique(labels)
         segment_ids = segment_ids[segment_ids > 0]
 

@@ -45,6 +45,10 @@ class TextureExtractor(BaseExtractor):
     ) -> pd.DataFrame:
         from scipy.ndimage import find_objects
 
+        if image.ndim < 2:
+            raise ValueError(f"Expected image with at least 2 dimensions, got {image.ndim}")
+        if image.ndim == 2:
+            image = image[np.newaxis, ...]
         n_bands = image.shape[0]
         band_indices = self.bands if self.bands is not None else list(range(n_bands))
 

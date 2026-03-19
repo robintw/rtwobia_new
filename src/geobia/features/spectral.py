@@ -50,6 +50,10 @@ class SpectralExtractor(BaseExtractor):
         labels: np.ndarray,
         **kwargs,
     ) -> pd.DataFrame:
+        if image.ndim < 2:
+            raise ValueError(f"Expected image with at least 2 dimensions, got {image.ndim}")
+        if image.ndim == 2:
+            image = image[np.newaxis, ...]
         n_bands = image.shape[0]
         names = self._get_band_names(n_bands)
         nodata = kwargs.get("nodata")
