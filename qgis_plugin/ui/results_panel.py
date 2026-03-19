@@ -34,6 +34,8 @@ from qgis.PyQt.QtCore import QVariant
 TAG = "GeoOBIA"
 
 # Default palette for classes
+_SAMPLES_LAYER_NAME = "GeoOBIA Training Samples"
+
 _PALETTE = [
     "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
     "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
@@ -173,6 +175,9 @@ class ResultsPanel(QWidget):
         if seg is None:
             return
 
+        # Hide training samples layer so it doesn't obscure results
+        self._hide_training_samples()
+
         # Create or reuse vector layer from labels
         vlayer = self._get_or_create_vector_layer(seg)
         if vlayer is None:
@@ -182,6 +187,17 @@ class ResultsPanel(QWidget):
             self._apply_categorized_style(vlayer)
         else:
             self._apply_outline_style(vlayer)
+
+    def _hide_training_samples(self):
+        """Turn off the training samples layer in the layer tree."""
+        root = QgsProject.instance().layerTreeRoot()
+        for lyr in QgsProject.instance().mapLayersByName(_SAMPLES_LAYER_NAME):
+            try:
+                node = root.findLayer(lyr.id())
+                if node is not None:
+                    node.setItemVisibilityChecked(False)
+            except (RuntimeError, Exception):
+                pass
 
     def _get_or_create_vector_layer(self, seg):
         """Vectorize labels into a memory vector layer."""
