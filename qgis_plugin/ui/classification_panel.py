@@ -10,6 +10,7 @@ from qgis.PyQt.QtWidgets import (
     QColorDialog,
     QComboBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -190,10 +191,7 @@ class ClassificationPanel(QWidget):
         name_item.setFlags(name_item.flags() | Qt.ItemIsEditable)
         self._class_table.setItem(row, 0, name_item)
 
-        color_item = QTableWidgetItem("")
-        color_item.setBackground(color)
-        color_item.setFlags(color_item.flags() & ~Qt.ItemIsEditable)
-        self._class_table.setItem(row, 1, color_item)
+        self._set_color_cell(row, color)
 
         count_item = QTableWidgetItem("0")
         count_item.setFlags(count_item.flags() & ~Qt.ItemIsEditable)
@@ -242,14 +240,23 @@ class ClassificationPanel(QWidget):
             if cls == old_name:
                 self.state.training_samples[seg_id] = new_name
 
+    def _set_color_cell(self, row, color):
+        """Set a colored QFrame widget in the color column for the given row."""
+        swatch = QFrame()
+        swatch.setAutoFillBackground(True)
+        swatch.setStyleSheet(
+            f"background-color: {color.name()}; border: 1px solid #888;")
+        swatch.setFixedHeight(20)
+        self._class_table.setCellWidget(row, 1, swatch)
+
     def _on_class_color_click(self, row, col):
         if col != 1:
             return
-        item = self._class_table.item(row, 1)
-        color = QColorDialog.getColor(item.background().color(), self)
+        name = self._class_table.item(row, 0).text()
+        current = self.state.class_colors.get(name, QColor(Qt.white))
+        color = QColorDialog.getColor(current, self)
         if color.isValid():
-            item.setBackground(color)
-            name = self._class_table.item(row, 0).text()
+            self._set_color_cell(row, color)
             self.state.class_colors[name] = color
 
     # ---- Sample selection ----
