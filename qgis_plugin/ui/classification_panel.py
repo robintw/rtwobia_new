@@ -9,6 +9,7 @@ from qgis.PyQt.QtWidgets import (
     QApplication,
     QColorDialog,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QFrame,
     QGroupBox,
@@ -132,11 +133,71 @@ class ClassificationPanel(QWidget):
 
         # Algorithm
         algo_group = QGroupBox("Algorithm")
-        algo_layout = QFormLayout()
-        self._sup_n_estimators = QSpinBox()
-        self._sup_n_estimators.setRange(1, 10000)
-        self._sup_n_estimators.setValue(100)
-        algo_layout.addRow("Trees (Random Forest):", self._sup_n_estimators)
+        algo_layout = QVBoxLayout()
+
+        method_row = QFormLayout()
+        self._sup_method = QComboBox()
+        self._sup_method.addItems(["Random Forest", "SVM", "Gradient Boosting"])
+        self._sup_method.currentTextChanged.connect(self._on_sup_method_changed)
+        method_row.addRow("Method:", self._sup_method)
+        algo_layout.addLayout(method_row)
+
+        # Per-method parameter widgets (stacked)
+        self._sup_params_container = QVBoxLayout()
+        algo_layout.addLayout(self._sup_params_container)
+
+        # Random Forest params
+        self._rf_widget = QWidget()
+        rf_layout = QFormLayout()
+        self._rf_n_estimators = QSpinBox()
+        self._rf_n_estimators.setRange(1, 10000)
+        self._rf_n_estimators.setValue(100)
+        rf_layout.addRow("Trees:", self._rf_n_estimators)
+        self._rf_max_depth = QSpinBox()
+        self._rf_max_depth.setRange(0, 1000)
+        self._rf_max_depth.setValue(0)
+        self._rf_max_depth.setSpecialValueText("None")
+        self._rf_max_depth.setToolTip("Maximum tree depth (0 = unlimited)")
+        rf_layout.addRow("Max depth:", self._rf_max_depth)
+        self._rf_widget.setLayout(rf_layout)
+        self._sup_params_container.addWidget(self._rf_widget)
+
+        # SVM params
+        self._svm_widget = QWidget()
+        svm_layout = QFormLayout()
+        self._svm_kernel = QComboBox()
+        self._svm_kernel.addItems(["rbf", "linear", "poly", "sigmoid"])
+        svm_layout.addRow("Kernel:", self._svm_kernel)
+        self._svm_c = QDoubleSpinBox()
+        self._svm_c.setRange(0.001, 10000.0)
+        self._svm_c.setValue(1.0)
+        self._svm_c.setDecimals(3)
+        svm_layout.addRow("C:", self._svm_c)
+        self._svm_widget.setLayout(svm_layout)
+        self._svm_widget.hide()
+        self._sup_params_container.addWidget(self._svm_widget)
+
+        # Gradient Boosting params
+        self._gb_widget = QWidget()
+        gb_layout = QFormLayout()
+        self._gb_n_estimators = QSpinBox()
+        self._gb_n_estimators.setRange(1, 10000)
+        self._gb_n_estimators.setValue(100)
+        gb_layout.addRow("Trees:", self._gb_n_estimators)
+        self._gb_max_depth = QSpinBox()
+        self._gb_max_depth.setRange(1, 100)
+        self._gb_max_depth.setValue(5)
+        gb_layout.addRow("Max depth:", self._gb_max_depth)
+        self._gb_learning_rate = QDoubleSpinBox()
+        self._gb_learning_rate.setRange(0.001, 10.0)
+        self._gb_learning_rate.setValue(0.1)
+        self._gb_learning_rate.setDecimals(3)
+        self._gb_learning_rate.setSingleStep(0.01)
+        gb_layout.addRow("Learning rate:", self._gb_learning_rate)
+        self._gb_widget.setLayout(gb_layout)
+        self._gb_widget.hide()
+        self._sup_params_container.addWidget(self._gb_widget)
+
         algo_group.setLayout(algo_layout)
         layout.addWidget(algo_group)
 
@@ -258,6 +319,12 @@ class ClassificationPanel(QWidget):
         if color.isValid():
             self._set_color_cell(row, color)
             self.state.class_colors[name] = color
+
+    def _on_sup_method_changed(self, method_text):
+        """Show/hide parameter widgets for the selected supervised method."""
+        self._rf_widget.setVisible(method_text == "Random Forest")
+        self._svm_widget.setVisible(method_text == "SVM")
+        self._gb_widget.setVisible(method_text == "Gradient Boosting")
 
     # ---- Sample selection ----
 
@@ -384,6 +451,28 @@ class ClassificationPanel(QWidget):
 
     # ---- Training / Prediction ----
 
+    def _get_sup_method_and_params(self):
+        """Return (method_name, params_dict) for the selected supervised method."""
+        method_text = self._sup_method.currentText()
+        if method_text == "Random Forest":
+            params = {"n_estimators": self._rf_n_estimators.value()}
+            depth = self._rf_max_depth.value()
+            if depth > 0:
+                params["max_depth"] = depth
+            return "random_forest", params
+        elif method_text == "SVM":
+            return "svm", {
+                "kernel": self._svm_kernel.currentText(),
+                "C": self._svm_c.value(),
+            }
+        elif method_text == "Gradient Boosting":
+            return "gradient_boosting", {
+                "n_estimators": self._gb_n_estimators.value(),
+                "max_depth": self._gb_max_depth.value(),
+                "learning_rate": self._gb_learning_rate.value(),
+            }
+        return "random_forest", {}
+
     def _on_train(self):
         if self.state.features_df is None:
             QMessageBox.warning(self, "GeoOBIA", "Extract features first.")
@@ -392,10 +481,10 @@ class ClassificationPanel(QWidget):
             QMessageBox.warning(self, "GeoOBIA", "Select training samples first.")
             return
 
-        n_estimators = self._sup_n_estimators.value()
-        log(f"Train: random_forest, n_estimators={n_estimators}")
+        method, params = self._get_sup_method_and_params()
+        log(f"Train: {method}, params={params}")
 
-        self._status.setText("Training...")
+        self._status.setText(f"Training ({method})...")
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
 
@@ -408,9 +497,9 @@ class ClassificationPanel(QWidget):
                 self.state.training_samples, name="class_label")
 
             predictions = classify(
-                features, method="random_forest",
+                features, method=method,
                 training_labels=training_labels,
-                n_estimators=n_estimators)
+                **params)
 
             self.state.predictions = predictions
             n_classes = predictions.nunique()
