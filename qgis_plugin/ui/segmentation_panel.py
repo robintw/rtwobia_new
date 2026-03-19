@@ -5,17 +5,23 @@ import tempfile
 import traceback
 from collections import OrderedDict
 
+from qgis.PyQt.QtCore import Qt, QVariant
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -33,7 +39,6 @@ from qgis.core import (
     QgsVectorLayer,
     Qgis,
 )
-from qgis.PyQt.QtCore import QVariant
 from qgis.gui import QgsMapLayerComboBox
 
 from .schema_widgets import build_param_widgets, collect_param_values, create_param_group
@@ -44,6 +49,73 @@ _OUTLINE_LAYER_NAME = "GeoOBIA Segments"
 
 def log(msg, level=Qgis.Info):
     QgsMessageLog.logMessage(str(msg), TAG, level)
+
+
+class BandSelectorDialog(QDialog):
+    """Dialog to select which raster bands to use for segmentation."""
+
+    def __init__(self, layer, selected_indices=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Bands")
+        self.setMinimumWidth(300)
+        self._checkboxes = []
+        self._build_ui(layer, selected_indices)
+
+    def _build_ui(self, layer, selected_indices):
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Select bands to use for segmentation:"))
+
+        n_bands = layer.bandCount()
+        use_all = selected_indices is None
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout()
+
+        for i in range(n_bands):
+            band_name = layer.bandName(i + 1)  # 1-based in QGIS
+            label = f"Band {i} — {band_name}" if band_name else f"Band {i}"
+            cb = QCheckBox(label)
+            cb.setChecked(use_all or i in selected_indices)
+            cb.setProperty("band_index", i)
+            self._checkboxes.append(cb)
+            scroll_layout.addWidget(cb)
+
+        scroll_layout.addStretch()
+        scroll_widget.setLayout(scroll_layout)
+        scroll.setWidget(scroll_widget)
+        layout.addWidget(scroll)
+
+        # Select all / none buttons
+        btn_row = QHBoxLayout()
+        all_btn = QPushButton("All")
+        all_btn.clicked.connect(lambda: self._set_all(True))
+        btn_row.addWidget(all_btn)
+        none_btn = QPushButton("None")
+        none_btn.clicked.connect(lambda: self._set_all(False))
+        btn_row.addWidget(none_btn)
+        layout.addLayout(btn_row)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setLayout(layout)
+
+    def _set_all(self, checked):
+        for cb in self._checkboxes:
+            cb.setChecked(checked)
+
+    def selected_indices(self):
+        """Return list of selected 0-based band indices, or None for all."""
+        selected = [cb.property("band_index") for cb in self._checkboxes
+                    if cb.isChecked()]
+        if len(selected) == len(self._checkboxes):
+            return None  # all bands
+        return selected
 
 
 class SegmentationPanel(QWidget):
@@ -68,8 +140,26 @@ class SegmentationPanel(QWidget):
         input_layout = QVBoxLayout()
         self._layer_combo = QgsMapLayerComboBox()
         self._layer_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
+        self._layer_combo.layerChanged.connect(self._on_layer_changed)
         input_layout.addWidget(QLabel("Raster layer:"))
         input_layout.addWidget(self._layer_combo)
+
+        # Band selection
+        band_row = QHBoxLayout()
+        band_row.addWidget(QLabel("Bands:"))
+        self._bands_display = QLineEdit()
+        self._bands_display.setReadOnly(True)
+        self._bands_display.setPlaceholderText("All bands")
+        self._bands_display.setToolTip("0-based band indices used for segmentation")
+        band_row.addWidget(self._bands_display)
+        self._bands_btn = QPushButton("Select...")
+        self._bands_btn.setToolTip("Choose which bands to use for segmentation")
+        self._bands_btn.setFixedWidth(70)
+        self._bands_btn.clicked.connect(self._on_select_bands)
+        band_row.addWidget(self._bands_btn)
+        input_layout.addLayout(band_row)
+        self._selected_bands = None  # None = all bands
+
         input_group.setLayout(input_layout)
         layout.addWidget(input_group)
 
@@ -163,7 +253,8 @@ class SegmentationPanel(QWidget):
 
         schema = cls.get_param_schema()
         self._param_widgets = build_param_widgets(schema)
-        self._param_group = create_param_group("Parameters", self._param_widgets)
+        self._param_group = create_param_group(
+            "Parameters (hover over name for guidance)", self._param_widgets)
         self._params_container.addWidget(self._param_group)
 
     def _get_input_layer(self):
@@ -176,6 +267,26 @@ class SegmentationPanel(QWidget):
         params = collect_param_values(self._param_widgets)
         return {k: v for k, v in params.items() if v is not None}
 
+    def _on_layer_changed(self, layer):
+        """Reset band selection when the input layer changes."""
+        self._selected_bands = None
+        self._bands_display.clear()
+
+    def _on_select_bands(self):
+        """Open the band selector dialog."""
+        layer = self._layer_combo.currentLayer()
+        if layer is None:
+            QMessageBox.warning(self, "GeoOBIA", "Select an input raster layer first.")
+            return
+        dlg = BandSelectorDialog(layer, self._selected_bands, parent=self)
+        if dlg.exec_() == QDialog.Accepted:
+            self._selected_bands = dlg.selected_indices()
+            if self._selected_bands is None:
+                self._bands_display.clear()
+            else:
+                self._bands_display.setText(
+                    ", ".join(str(i) for i in self._selected_bands))
+
     # --- Run segmentation ---
 
     def _on_run(self):
@@ -186,7 +297,8 @@ class SegmentationPanel(QWidget):
         method = self._method_combo.currentText()
         params = self._collect_params()
         source = layer.source()
-        log(f"Run: method={method}, params={params}")
+        selected_bands = self._selected_bands  # snapshot for background thread
+        log(f"Run: method={method}, params={params}, bands={selected_bands}")
 
         self._status.setText("Segmenting...")
         self._run_btn.setEnabled(False)
@@ -205,7 +317,7 @@ class SegmentationPanel(QWidget):
             if is_canceled():
                 return None
 
-            labels = segment(image, method=method, **params)
+            labels = segment(image, method=method, bands=selected_bands, **params)
             n_segments = int(labels.max())
             log(f"Segmentation done: {n_segments} segments")
             set_progress(60)

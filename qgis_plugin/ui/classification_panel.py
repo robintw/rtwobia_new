@@ -125,8 +125,8 @@ class ClassificationPanel(QWidget):
 
         # Mode tabs
         self._tabs = QTabWidget()
-        self._tabs.addTab(self._build_supervised_tab(), "Supervised")
         self._tabs.addTab(self._build_unsupervised_tab(), "Unsupervised")
+        self._tabs.addTab(self._build_supervised_tab(), "Supervised")
         layout.addWidget(self._tabs)
 
         # Progress
