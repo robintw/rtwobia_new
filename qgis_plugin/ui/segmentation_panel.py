@@ -53,7 +53,7 @@ class SegmentationPanel(QWidget):
         self.state = state
         self._param_widgets = OrderedDict()
         self._param_group = None
-        self._outline_layer = None  # current vector layer on the map
+        self._outline_layers = {}  # run index -> cached QgsVectorLayer
         try:
             self._setup_ui()
         except Exception:
@@ -383,6 +383,19 @@ class SegmentationPanel(QWidget):
         if row < 0 or row >= len(self.state.seg_runs):
             return
 
+        # Remove cached outline layer for this run
+        vlayer = self._outline_layers.pop(row, None)
+        if self._is_layer_alive(vlayer):
+            try:
+                QgsProject.instance().removeMapLayer(vlayer.id())
+            except (RuntimeError, Exception):
+                pass
+        # Re-key outline layers above the deleted row
+        self._outline_layers = {
+            (k - 1 if k > row else k): v
+            for k, v in self._outline_layers.items()
+        }
+
         # Remove the run and clean up temp file
         run = self.state.seg_runs.pop(row)
         if run.raster_path:
@@ -408,7 +421,7 @@ class SegmentationPanel(QWidget):
             new_row = min(row, self._gallery_list.count() - 1)
             self._gallery_list.setCurrentRow(new_row)
         else:
-            self._remove_outline_layer()
+            self._remove_outline_layers()
             self._use_btn.setEnabled(False)
             self._delete_btn.setEnabled(False)
 
@@ -428,9 +441,54 @@ class SegmentationPanel(QWidget):
             item.setFont(font)
 
     def _show_outlines(self, run):
-        """Replace the outline layer on the map with this run's polygons."""
-        self._remove_outline_layer()
+        """Show this run's outline layer, hiding all others.
 
+        Layers are cached per run so switching is instant after the
+        first view — no geometry rebuilding needed.
+        """
+        row = self.state.seg_runs.index(run) if run in self.state.seg_runs else -1
+        root = QgsProject.instance().layerTreeRoot()
+
+        # Hide all cached outline layers
+        for idx, vlayer in list(self._outline_layers.items()):
+            if not self._is_layer_alive(vlayer):
+                self._outline_layers.pop(idx, None)
+                continue
+            node = root.findLayer(vlayer.id())
+            if node is not None:
+                node.setItemVisibilityChecked(False)
+
+        # Reuse cached layer if available
+        if row >= 0 and row in self._outline_layers:
+            vlayer = self._outline_layers[row]
+            if self._is_layer_alive(vlayer):
+                node = root.findLayer(vlayer.id())
+                if node is not None:
+                    node.setItemVisibilityChecked(True)
+                    self.iface.mapCanvas().refresh()
+                    return
+                # Layer was removed from project — rebuild
+                self._outline_layers.pop(row, None)
+
+        # Build a new layer for this run
+        vlayer = self._build_outline_layer(run)
+        QgsProject.instance().addMapLayer(vlayer)
+        if row >= 0:
+            self._outline_layers[row] = vlayer
+        self.iface.mapCanvas().refresh()
+
+    @staticmethod
+    def _is_layer_alive(layer):
+        if layer is None:
+            return False
+        try:
+            layer.id()
+            return True
+        except RuntimeError:
+            return False
+
+    def _build_outline_layer(self, run):
+        """Create a styled vector layer from a run's GeoDataFrame."""
         crs = run.meta.get("crs")
         crs_str = str(crs) if crs else "EPSG:4326"
 
@@ -458,20 +516,17 @@ class SegmentationPanel(QWidget):
         outline.setStrokeWidth(0.5)
         symbol.appendSymbolLayer(outline)
         vlayer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        return vlayer
 
-        QgsProject.instance().addMapLayer(vlayer)
-        self._outline_layer = vlayer
-        self.iface.mapCanvas().refresh()
-
-    def _remove_outline_layer(self):
-        """Remove the current outline layer from the map."""
-        if self._outline_layer is not None:
-            try:
-                self._outline_layer.id()  # check C++ object alive
-                QgsProject.instance().removeMapLayer(self._outline_layer.id())
-            except (RuntimeError, Exception):
-                pass
-            self._outline_layer = None
+    def _remove_outline_layers(self):
+        """Remove all cached outline layers from the map."""
+        for idx, vlayer in list(self._outline_layers.items()):
+            if self._is_layer_alive(vlayer):
+                try:
+                    QgsProject.instance().removeMapLayer(vlayer.id())
+                except (RuntimeError, Exception):
+                    pass
+        self._outline_layers.clear()
         # Also clean up any stale layers with our name
         for lyr in QgsProject.instance().mapLayersByName(_OUTLINE_LAYER_NAME):
             try:
