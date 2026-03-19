@@ -30,6 +30,7 @@ class UnsupervisedClassifier(BaseClassifier):
         self.feature_names_ = None
         self.scaler_ = None
         self.labels_ = None  # stored for DBSCAN (no predict method)
+        self._auto_eps = False
 
         self.model_ = self._create_model()
 
@@ -59,11 +60,15 @@ class UnsupervisedClassifier(BaseClassifier):
             return GaussianMixture(**defaults)
 
         elif self.algorithm == "dbscan":
+            # eps=0 means auto-estimate at fit time; strip it so DBSCAN
+            # uses its own default until we override in fit().
             defaults = {
-                "eps": 0.5,
                 "min_samples": 5,
             }
             defaults.update(self.params)
+            self._auto_eps = defaults.pop("eps", 0) in (0, None)
+            if not self._auto_eps:
+                defaults["eps"] = self.params["eps"]
             return DBSCAN(**defaults)
 
         raise ValueError(
@@ -77,6 +82,19 @@ class UnsupervisedClassifier(BaseClassifier):
         if self.algorithm == "dbscan":
             self.scaler_ = StandardScaler()
             X = self.scaler_.fit_transform(features.values)
+            # Auto-estimate eps from k-nearest-neighbor distances if not
+            # explicitly provided.  Default eps=0.5 is far too small for
+            # high-dimensional scaled feature spaces where typical NN
+            # distances grow with sqrt(n_features).
+            if self._auto_eps:
+                from sklearn.neighbors import NearestNeighbors
+                k = min(self.model_.min_samples, len(X) - 1)
+                nn = NearestNeighbors(n_neighbors=k)
+                nn.fit(X)
+                dists, _ = nn.kneighbors(X)
+                # Use the "knee" of the k-distance curve: the median
+                # of the k-th neighbor distances is a robust default.
+                self.model_.eps = float(np.median(dists[:, -1]))
             self.model_.fit(X)
             # DBSCAN stores labels in .labels_ (-1 = noise)
             self.labels_ = pd.Series(
@@ -167,13 +185,14 @@ class UnsupervisedClassifier(BaseClassifier):
                 "properties": {
                     "eps": {
                         "type": "number",
-                        "default": 0.5,
-                        "minimum": 0.001,
+                        "default": 0,
+                        "minimum": 0,
                         "maximum": 100.0,
                         "description": (
                             "Maximum distance between two samples to be "
                             "considered neighbours. Smaller values create "
-                            "tighter, more numerous clusters."
+                            "tighter, more numerous clusters. Set to 0 for "
+                            "automatic estimation from the data."
                         ),
                     },
                     "min_samples": {
