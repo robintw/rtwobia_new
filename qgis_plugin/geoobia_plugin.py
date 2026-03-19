@@ -130,9 +130,15 @@ class GeobiaPlugin:
         tabs.addTab(ResultsPanel(self.iface, self.state), "Results")
         self.dock.setWidget(tabs)
 
+        self.dock.visibilityChanged.connect(self._on_dock_visibility_changed)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         log("_create_dock complete — dock added")
         return True
+
+    def _on_dock_visibility_changed(self, visible):
+        """Sync toolbar button state when dock is closed via the X button."""
+        if self.action is not None:
+            self.action.setChecked(visible)
 
     def unload(self):
         if self.action:
