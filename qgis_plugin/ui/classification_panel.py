@@ -81,6 +81,7 @@ class ClassificationPanel(QWidget):
             0, QHeaderView.Stretch)
         self._class_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._class_table.cellDoubleClicked.connect(self._on_class_color_click)
+        self._class_table.cellChanged.connect(self._on_class_name_changed)
         class_layout.addWidget(self._class_table)
 
         btn_row = QHBoxLayout()
@@ -201,6 +202,31 @@ class ClassificationPanel(QWidget):
         if idx >= 0:
             self._active_class_combo.removeItem(idx)
         self._update_sample_counts()
+
+    def _on_class_name_changed(self, row, col):
+        """Sync combo box and state when a class name is edited in the table."""
+        if col != 0:
+            return
+        item = self._class_table.item(row, 0)
+        if item is None:
+            return
+        new_name = item.text()
+        old_name = self._active_class_combo.itemText(row)
+        if new_name == old_name:
+            return
+
+        # Update combo box
+        self._active_class_combo.setItemText(row, new_name)
+
+        # Update class_colors dict
+        color = self.state.class_colors.pop(old_name, None)
+        if color is not None:
+            self.state.class_colors[new_name] = color
+
+        # Update training samples that used the old name
+        for seg_id, cls in list(self.state.training_samples.items()):
+            if cls == old_name:
+                self.state.training_samples[seg_id] = new_name
 
     def _on_class_color_click(self, row, col):
         if col != 1:

@@ -4,7 +4,7 @@ from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QCursor
 from qgis.core import (
     QgsPointXY,
-    QgsRasterDataProvider,
+    QgsRaster,
 )
 from qgis.gui import QgsMapTool
 
@@ -52,13 +52,18 @@ class SampleSelectorTool(QgsMapTool):
 
     def _identify_segment(self, point: QgsPointXY):
         """Read the segment ID at the given map coordinate."""
-        if self.labels_layer is None or not self.labels_layer.isValid():
+        if self.labels_layer is None:
+            return None
+        try:
+            if not self.labels_layer.isValid():
+                return None
+        except RuntimeError:
             return None
 
         provider = self.labels_layer.dataProvider()
         result = provider.identify(
             point,
-            QgsRasterDataProvider.IdentifyFormatValue,
+            QgsRaster.IdentifyFormatValue,
         )
         if result.isValid():
             values = result.results()
