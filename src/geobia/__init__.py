@@ -14,7 +14,9 @@ Example:
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+from importlib.metadata import version as _pkg_version
+
+__version__ = _pkg_version("geobia")
 
 from geobia import io
 from geobia.segmentation import segment, segment_tiled

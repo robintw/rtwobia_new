@@ -174,3 +174,7 @@ __all__ = [
     "segment_tiled",
     "list_methods",
 ]
+
+# Conditionally add SAM to __all__ if available
+if "sam" in _REGISTRY:
+    __all__.append("SAMSegmenter")

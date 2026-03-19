@@ -69,6 +69,9 @@ def write_raster(
     meta: dict[str, Any],
     *,
     dtype: str | None = None,
+    blocksize: int = 256,
+    compress: str = "deflate",
+    tiled: bool = True,
 ) -> None:
     """Write a raster array to disk.
 
@@ -77,6 +80,9 @@ def write_raster(
         data: Array with shape (bands, height, width) or (height, width).
         meta: Metadata dict with at least 'crs' and 'transform'.
         dtype: Override output dtype. If None, uses data.dtype.
+        blocksize: GeoTIFF tile block size in pixels.
+        compress: Compression method (deflate, lzw, zstd, none).
+        tiled: Whether to write tiled GeoTIFF.
     """
     if data.ndim == 2:
         data = data[np.newaxis, ...]
@@ -106,10 +112,10 @@ def write_raster(
         "crs": meta.get("crs"),
         "transform": meta.get("transform"),
         "nodata": meta.get("nodata"),
-        "tiled": True,
-        "blockxsize": 256,
-        "blockysize": 256,
-        "compress": "deflate",
+        "tiled": tiled,
+        "blockxsize": blocksize,
+        "blockysize": blocksize,
+        "compress": compress,
     }
 
     with rasterio.open(path, "w", **profile) as ds:

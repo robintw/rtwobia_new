@@ -9,6 +9,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from skimage.filters import threshold_otsu
+
+__all__ = ["feature_difference", "change_magnitude", "detect_changes", "change_summary"]
+
 
 def feature_difference(
     features_t1: pd.DataFrame,
@@ -90,7 +94,6 @@ def detect_changes(
     mag = change_magnitude(features_t1, features_t2, normalize=normalize)
 
     if threshold == "otsu":
-        from skimage.filters import threshold_otsu
         if mag.nunique() < 2:
             thresh_val = float(mag.max()) + 1
         else:

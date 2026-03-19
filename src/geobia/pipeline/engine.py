@@ -184,6 +184,9 @@ class Pipeline:
         duration = time.perf_counter() - t0
 
         result.features = features
+        # Release the image array to free memory — it is no longer needed
+        # after feature extraction.
+        result.image = None
         result.steps.append(StepResult(
             name="extract",
             duration_s=duration,

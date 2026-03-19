@@ -25,12 +25,16 @@ class ShepherdSegmenter(BaseSegmenter):
     def __init__(
         self,
         num_clusters: int = 60,
-        min_n_pxls: int = 100,
+        min_n_pxls: int | None = None,
         dist_thres: float | str = "auto",
         sampling: int = 100,
+        *,
+        min_size: int | None = None,
     ):
         self.num_clusters = num_clusters
-        self.min_n_pxls = min_n_pxls
+        # Accept both min_size (consistent with other segmenters) and
+        # min_n_pxls (pyshepseg convention).
+        self.min_n_pxls = min_size or min_n_pxls or 100
         self.dist_thres = dist_thres
         self.sampling = sampling
 
