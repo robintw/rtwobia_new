@@ -58,6 +58,58 @@ def log(msg, level=Qgis.Info):
     QgsMessageLog.logMessage(str(msg), TAG, level)
 
 
+class FeatureImportanceDialog(QWidget):
+    """Modal dialog showing feature importances with CSV export."""
+
+    def __init__(self, importance, parent=None):
+        from qgis.PyQt.QtWidgets import QDialog, QDialogButtonBox
+        super().__init__(parent)
+        self._importance = importance
+        self._dialog = QDialog(parent)
+        self._dialog.setWindowTitle("Feature Importance")
+        self._dialog.setMinimumSize(400, 450)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout()
+
+        table = QTableWidget(len(self._importance), 2)
+        table.setHorizontalHeaderLabels(["Feature", "Importance"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        for i, (name, val) in enumerate(self._importance.items()):
+            table.setItem(i, 0, QTableWidgetItem(str(name)))
+            table.setItem(i, 1, QTableWidgetItem(f"{val:.6f}"))
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        export_btn = QPushButton("Export CSV...")
+        export_btn.clicked.connect(self._on_export_csv)
+        btn_row.addWidget(export_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self._dialog.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        self._dialog.setLayout(layout)
+
+    def _on_export_csv(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self._dialog, "Export Feature Importance", "",
+            "CSV (*.csv)")
+        if not path:
+            return
+        import pandas as pd
+        df = pd.DataFrame({
+            "feature": self._importance.index,
+            "importance": self._importance.values,
+        })
+        df.to_csv(path, index=False)
+        log(f"Feature importance exported to {path}")
+
+    def exec_(self):
+        self._dialog.exec_()
+
+
 class ClassificationPanel(QWidget):
     def __init__(self, iface, state, parent=None):
         super().__init__(parent)
@@ -174,17 +226,13 @@ class ClassificationPanel(QWidget):
         action_row.addWidget(train_btn)
         layout.addLayout(action_row)
 
-        # Feature importance (shown after training tree-based models)
-        self._importance_group = QGroupBox("Feature Importance (top 10)")
-        imp_layout = QVBoxLayout()
-        self._importance_table = QTableWidget(0, 2)
-        self._importance_table.setHorizontalHeaderLabels(["Feature", "Importance"])
-        self._importance_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.Stretch)
-        imp_layout.addWidget(self._importance_table)
-        self._importance_group.setLayout(imp_layout)
-        self._importance_group.hide()
-        layout.addWidget(self._importance_group)
+        # Feature importance button (shown after training tree-based models)
+        self._importance_btn = QPushButton("Feature Importance...")
+        self._importance_btn.setToolTip("View feature importance rankings")
+        self._importance_btn.clicked.connect(self._on_show_importance)
+        self._importance_btn.hide()
+        layout.addWidget(self._importance_btn)
+        self._cached_importance = None  # pd.Series, set after training
 
         # Model save/load
         model_row = QHBoxLayout()
@@ -495,21 +543,20 @@ class ClassificationPanel(QWidget):
                 pass
 
     def _show_feature_importance(self, clf):
-        """Show top-10 feature importances if the model supports it."""
+        """Cache feature importances and show the button if supported."""
         try:
-            importance = clf.feature_importance()
+            self._cached_importance = clf.feature_importance()
+            self._importance_btn.show()
         except (NotImplementedError, RuntimeError):
-            self._importance_group.hide()
-            return
+            self._cached_importance = None
+            self._importance_btn.hide()
 
-        top = importance.head(10)
-        self._importance_table.setRowCount(0)
-        for name, val in top.items():
-            row = self._importance_table.rowCount()
-            self._importance_table.insertRow(row)
-            self._importance_table.setItem(row, 0, QTableWidgetItem(str(name)))
-            self._importance_table.setItem(row, 1, QTableWidgetItem(f"{val:.4f}"))
-        self._importance_group.show()
+    def _on_show_importance(self):
+        """Open a dialog showing feature importances with CSV export."""
+        if self._cached_importance is None:
+            return
+        dlg = FeatureImportanceDialog(self._cached_importance, parent=self)
+        dlg.exec_()
 
     # ---- Model save/load ----
 
