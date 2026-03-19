@@ -138,6 +138,8 @@ class SegmentationPanel(QWidget):
             log("Cannot import geobia.segmentation", Qgis.Warning)
             return
 
+        # Clear old widgets first — they'll be destroyed by deleteLater
+        self._param_widgets = OrderedDict()
         if self._param_group is not None:
             self._params_container.removeWidget(self._param_group)
             self._param_group.deleteLater()
