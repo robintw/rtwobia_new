@@ -547,7 +547,7 @@ class ClassificationPanel(QWidget):
         try:
             self._cached_importance = clf.feature_importance()
             self._importance_btn.show()
-        except (NotImplementedError, RuntimeError):
+        except (NotImplementedError, RuntimeError, AttributeError):
             self._cached_importance = None
             self._importance_btn.hide()
 
