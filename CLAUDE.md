@@ -53,8 +53,9 @@ src/geobia/
 
 ## Testing
 
-- **Run fast tests:** `uv run pytest tests/ -v -m "not spot_image and not slow"`
+- **Run fast tests:** `uv run pytest tests/ -v -m "not spot_image and not slow and not qgis"`
 - **Run SPOT integration tests:** `uv run pytest tests/ -v -m spot_image` (requires `tests/data/SPOT_ROI.tif`)
-- 85 fast tests + 13 SPOT/benchmark tests
+- **Lint:** `uv run ruff check src/ tests/`
+- 236 fast tests + 13 SPOT/benchmark tests + QGIS tests (optional)
 - Synthetic 4-band 100x100 image with 4 quadrants (vegetation, urban, water, soil)
 - Shared fixtures in `tests/conftest.py`
