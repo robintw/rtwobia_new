@@ -8,6 +8,7 @@ from qgis.PyQt.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QLabel,
     QLineEdit,
     QSpinBox,
     QWidget,
@@ -77,7 +78,7 @@ def build_param_widgets(schema: dict) -> OrderedDict:
                 w.setText(str(default))
             w.setToolTip(description)
 
-        widgets[name] = (label, w)
+        widgets[name] = (label, w, description)
 
     return widgets
 
@@ -85,7 +86,8 @@ def build_param_widgets(schema: dict) -> OrderedDict:
 def collect_param_values(widgets: OrderedDict) -> dict:
     """Read current values from widgets built by build_param_widgets."""
     values = {}
-    for name, (_label, w) in widgets.items():
+    for name, tup in widgets.items():
+        w = tup[1]  # (label, widget) or (label, widget, description)
         if isinstance(w, QSpinBox):
             values[name] = w.value()
         elif isinstance(w, QDoubleSpinBox):
@@ -117,8 +119,14 @@ def create_param_group(title: str, widgets: OrderedDict) -> QGroupBox:
     """Wrap widgets in a QGroupBox with a QFormLayout."""
     group = QGroupBox(title)
     layout = QFormLayout()
-    for _name, (label, widget) in widgets.items():
-        layout.addRow(label, widget)
+    for _name, tup in widgets.items():
+        label_text = tup[0]
+        widget = tup[1]
+        description = tup[2] if len(tup) > 2 else ""
+        label_widget = QLabel(label_text)
+        if description:
+            label_widget.setToolTip(description)
+        layout.addRow(label_widget, widget)
     group.setLayout(layout)
     return group
 
