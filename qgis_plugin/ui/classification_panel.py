@@ -293,8 +293,6 @@ class ClassificationPanel(QWidget):
 
     def _on_sup_method_changed(self, method_text):
         """Rebuild parameter widgets from schema for the selected method."""
-        from geobia.classification.supervised import SupervisedClassifier
-
         algorithm = self._sup_methods.get(method_text, "random_forest")
 
         self._sup_param_widgets = OrderedDict()
@@ -303,7 +301,7 @@ class ClassificationPanel(QWidget):
             self._sup_param_group.deleteLater()
             self._sup_param_group = None
 
-        schema = SupervisedClassifier.get_param_schema(algorithm)
+        schema = self._get_classifier_schema("supervised", algorithm)
         self._sup_param_widgets = build_param_widgets(schema)
         if self._sup_param_widgets:
             self._sup_param_group = create_param_group(
@@ -312,8 +310,6 @@ class ClassificationPanel(QWidget):
 
     def _on_unsup_method_changed(self, method_text):
         """Rebuild parameter widgets from schema for the selected method."""
-        from geobia.classification.unsupervised import UnsupervisedClassifier
-
         algorithm = self._unsup_methods.get(method_text, "kmeans")
 
         self._unsup_param_widgets = OrderedDict()
@@ -322,12 +318,27 @@ class ClassificationPanel(QWidget):
             self._unsup_param_group.deleteLater()
             self._unsup_param_group = None
 
-        schema = UnsupervisedClassifier.get_param_schema(algorithm)
+        schema = self._get_classifier_schema("unsupervised", algorithm)
         self._unsup_param_widgets = build_param_widgets(schema)
         if self._unsup_param_widgets:
             self._unsup_param_group = create_param_group(
                 "Parameters", self._unsup_param_widgets)
             self._unsup_params_container.addWidget(self._unsup_param_group)
+
+    @staticmethod
+    def _get_classifier_schema(kind, algorithm):
+        """Get param schema from the classifier class, with fallback."""
+        try:
+            if kind == "supervised":
+                from geobia.classification.supervised import SupervisedClassifier
+                return SupervisedClassifier.get_param_schema(algorithm)
+            else:
+                from geobia.classification.unsupervised import UnsupervisedClassifier
+                return UnsupervisedClassifier.get_param_schema(algorithm)
+        except AttributeError:
+            log("geobia library is outdated — reinstall for parameter tooltips",
+                Qgis.Warning)
+            return {"type": "object", "properties": {}}
 
     # ---- Sample selection ----
 
