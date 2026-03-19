@@ -113,7 +113,8 @@ class ResultsPanel(QWidget):
         self._export_format = QComboBox()
         self._export_format.addItems([
             "GeoPackage (.gpkg)",
-            "GeoTIFF (.tif) — labels",
+            "GeoTIFF (.tif) — segment labels",
+            "GeoTIFF (.tif) — classified raster",
             "Parquet (.parquet) — features + classes",
             "CSV (.csv) — features + classes",
         ])
@@ -310,6 +311,11 @@ class ResultsPanel(QWidget):
                 self, "Export GeoPackage", "", "GeoPackage (*.gpkg)")
             if path:
                 self._export_gpkg(path)
+        elif "classified raster" in fmt:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export Classified Raster", "", "GeoTIFF (*.tif)")
+            if path:
+                self._export_classified_raster(path)
         elif ".tif" in fmt:
             path, _ = QFileDialog.getSaveFileName(
                 self, "Export GeoTIFF", "", "GeoTIFF (*.tif)")
@@ -375,6 +381,36 @@ class ResultsPanel(QWidget):
             self._maybe_add_to_qgis(path)
         except Exception as e:
             log(f"Export GPKG failed: {traceback.format_exc()}", Qgis.Critical)
+            QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")
+
+    def _export_classified_raster(self, path):
+        """Export a raster where each pixel has its segment's class value."""
+        try:
+            import numpy as np
+            seg = self._get_active_seg()
+            if seg is None:
+                return
+            predictions = self.state.predictions
+            if predictions is None:
+                QMessageBox.warning(self, "GeoOBIA", "No classification results to export.")
+                return
+
+            labels = seg.labels_array
+            # Map class names to integer codes
+            unique_classes = sorted(predictions.unique())
+            class_to_int = {c: i + 1 for i, c in enumerate(unique_classes)}
+            log(f"Class mapping: {class_to_int}")
+
+            classified = np.zeros_like(labels, dtype=np.int32)
+            for seg_id, cls_name in predictions.items():
+                classified[labels == seg_id] = class_to_int.get(cls_name, 0)
+
+            from geobia.io.raster import write_raster
+            write_raster(path, classified, seg.meta, dtype="int32")
+            self._status.setText(f"Classified raster exported to {path}")
+            self._maybe_add_to_qgis(path)
+        except Exception as e:
+            log(f"Export classified raster failed: {traceback.format_exc()}", Qgis.Critical)
             QMessageBox.warning(self, "GeoOBIA", f"Export failed: {e}")
 
     def _export_geotiff(self, path):

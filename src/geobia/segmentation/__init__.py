@@ -45,6 +45,8 @@ def segment(
     image: np.ndarray,
     method: str = "slic",
     nodata_mask: np.ndarray | None = None,
+    bands: list[int] | None = None,
+    progress: callable | None = None,
     **params,
 ) -> np.ndarray:
     """Convenience function to segment an image in one call.
@@ -53,13 +55,24 @@ def segment(
         image: (bands, height, width) array.
         method: Algorithm name.
         nodata_mask: Boolean mask, True where invalid.
+        bands: Subset of band indices to use for segmentation.
+            E.g., [0, 1, 2] to segment on RGB only while keeping
+            all bands for feature extraction. If None, uses all bands.
+        progress: Optional callable(percent: float) for progress reporting.
         **params: Algorithm-specific parameters.
 
     Returns:
         (height, width) integer label array.
     """
+    _report = progress or (lambda p: None)
+    _report(5)
+    if bands is not None:
+        image = image[bands]
     segmenter = create(method, **params)
-    return segmenter.segment(image, nodata_mask=nodata_mask)
+    _report(10)
+    result = segmenter.segment(image, nodata_mask=nodata_mask)
+    _report(100)
+    return result
 
 
 def segment_tiled(

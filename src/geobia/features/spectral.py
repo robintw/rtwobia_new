@@ -52,6 +52,7 @@ class SpectralExtractor(BaseExtractor):
     ) -> pd.DataFrame:
         n_bands = image.shape[0]
         names = self._get_band_names(n_bands)
+        nodata = kwargs.get("nodata")
 
         segment_ids = np.unique(labels)
         segment_ids = segment_ids[segment_ids > 0]
@@ -60,17 +61,28 @@ class SpectralExtractor(BaseExtractor):
         if n_segments == 0:
             return pd.DataFrame()
 
+        # If nodata value is provided, mask those pixels out of label array
+        # so they don't contribute to stats
+        effective_labels = labels
+        if nodata is not None:
+            nodata_mask = np.zeros(labels.shape, dtype=bool)
+            for b in range(n_bands):
+                nodata_mask |= (image[b] == nodata)
+            if nodata_mask.any():
+                effective_labels = labels.copy()
+                effective_labels[nodata_mask] = 0
+
         features = {}
 
         for b in range(n_bands):
             band_data = image[b].astype(np.float64)
             bname = names[b]
 
-            features[f"mean_{bname}"] = ndimage.mean(band_data, labels, segment_ids)
-            features[f"std_{bname}"] = ndimage.standard_deviation(band_data, labels, segment_ids)
-            features[f"min_{bname}"] = ndimage.minimum(band_data, labels, segment_ids)
-            features[f"max_{bname}"] = ndimage.maximum(band_data, labels, segment_ids)
-            features[f"median_{bname}"] = ndimage.median(band_data, labels, segment_ids)
+            features[f"mean_{bname}"] = ndimage.mean(band_data, effective_labels, segment_ids)
+            features[f"std_{bname}"] = ndimage.standard_deviation(band_data, effective_labels, segment_ids)
+            features[f"min_{bname}"] = ndimage.minimum(band_data, effective_labels, segment_ids)
+            features[f"max_{bname}"] = ndimage.maximum(band_data, effective_labels, segment_ids)
+            features[f"median_{bname}"] = ndimage.median(band_data, effective_labels, segment_ids)
 
         # Compute range from min/max
         for b in range(n_bands):

@@ -84,9 +84,8 @@ class TestPipeline:
         assert len(gdf) > 0
 
     def test_unknown_step_raises(self, synthetic_image, synthetic_meta):
-        pipeline = Pipeline([("bogus", "slic", {})])
         with pytest.raises(ValueError, match="Unknown pipeline step"):
-            pipeline.run(image=synthetic_image, meta=synthetic_meta)
+            Pipeline([("bogus", "slic", {})])
 
     def test_pipeline_json_roundtrip(self, tmp_path):
         path = str(tmp_path / "test.json")

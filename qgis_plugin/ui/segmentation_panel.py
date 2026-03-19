@@ -8,6 +8,7 @@ from collections import OrderedDict
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -85,11 +86,24 @@ class SegmentationPanel(QWidget):
         self._params_container = QVBoxLayout()
         layout.addLayout(self._params_container)
 
-        # Run button
+        # Run button row
+        run_row = QHBoxLayout()
         self._run_btn = QPushButton("Run Segmentation")
         self._run_btn.setToolTip("Segment the full image")
         self._run_btn.clicked.connect(self._on_run)
-        layout.addWidget(self._run_btn)
+        run_row.addWidget(self._run_btn)
+
+        self._load_labels_btn = QPushButton("Load Labels...")
+        self._load_labels_btn.setToolTip(
+            "Load a pre-existing segment labels raster (skip segmentation)")
+        self._load_labels_btn.clicked.connect(self._on_load_labels)
+        run_row.addWidget(self._load_labels_btn)
+        layout.addLayout(run_row)
+
+        # Progress
+        from .tasks import TaskProgressWidget
+        self._progress = TaskProgressWidget()
+        layout.addWidget(self._progress)
 
         # Status
         self._status = QLabel("")
@@ -177,25 +191,20 @@ class SegmentationPanel(QWidget):
         self._status.setText("Segmenting...")
         self._run_btn.setEnabled(False)
 
-        # Read raster data on the GUI thread (QGIS layer access)
-        try:
-            from geobia.io.raster import read_raster
-            image, meta = read_raster(source)
-            log(f"Image: shape={image.shape}, dtype={image.dtype}")
-        except Exception:
-            msg = traceback.format_exc()
-            log(f"Read FAILED:\n{msg}", Qgis.Critical)
-            self._status.setText("Failed to read raster — see Log Messages.")
-            self._run_btn.setEnabled(True)
-            return
-
-        # Define work function — no QGIS access, only numpy/geobia
+        # Define work function — raster I/O + segmentation in background
         def work(set_progress, is_canceled):
+            from geobia.io.raster import read_raster, write_raster
             from geobia.segmentation import segment
-            from geobia.io.raster import write_raster
             from geobia.utils.vectorize import vectorize_labels
 
+            set_progress(2)
+            image, meta = read_raster(source)
+            log(f"Image: shape={image.shape}, dtype={image.dtype}")
             set_progress(5)
+
+            if is_canceled():
+                return None
+
             labels = segment(image, method=method, **params)
             n_segments = int(labels.max())
             log(f"Segmentation done: {n_segments} segments")
@@ -241,6 +250,9 @@ class SegmentationPanel(QWidget):
                 raster_path=result["raster_path"], gdf=result["gdf"],
                 n_segments=result["n_segments"],
             )
+            # Evict labels from non-active runs to save memory
+            for old_run in self.state.seg_runs:
+                old_run.evict_labels()
             self.state.seg_runs.append(run)
             self.state.input_layer = layer
 
@@ -261,7 +273,61 @@ class SegmentationPanel(QWidget):
             f"GeoOBIA: {method} segmentation",
             work, on_success, on_failure,
         )
-        run_task(self, task)
+        run_task(self, task, progress_widget=self._progress)
+
+    def _on_load_labels(self):
+        """Load a pre-existing segment labels raster."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Segment Labels", "",
+            "GeoTIFF (*.tif *.tiff);;All files (*)")
+        if not path:
+            return
+
+        try:
+            from geobia.io.raster import read_raster
+            from geobia.utils.vectorize import vectorize_labels
+
+            self._status.setText("Loading labels...")
+            data, meta = read_raster(path)
+            labels = data[0]
+            n_segments = int(labels.max())
+
+            if n_segments == 0:
+                QMessageBox.warning(self, "GeoOBIA",
+                                    "No segments found in this raster (all zeros).")
+                self._status.setText("")
+                return
+
+            crs = meta.get("crs")
+            gdf = vectorize_labels(labels, meta["transform"], crs)
+            log(f"Loaded {n_segments} segments from {path}")
+
+            from ..geoobia_plugin import SegmentationRun
+            run = SegmentationRun(
+                method="loaded", params={"path": path},
+                labels_array=labels, meta=meta,
+                raster_path=path, gdf=gdf,
+                n_segments=n_segments,
+            )
+            for old_run in self.state.seg_runs:
+                old_run.evict_labels()
+            self.state.seg_runs.append(run)
+
+            # Set input layer if one is selected
+            layer = self._layer_combo.currentLayer()
+            if layer is not None:
+                self.state.input_layer = layer
+
+            self._gallery_list.addItem(run.summary)
+            new_idx = self._gallery_list.count() - 1
+            self._gallery_list.setCurrentRow(new_idx)
+            self._status.setText(f"Loaded {n_segments} segments from file.")
+        except Exception:
+            msg = traceback.format_exc()
+            log(f"Load labels FAILED:\n{msg}", Qgis.Critical)
+            self._status.setText("Failed to load labels — see Log Messages.")
+            QMessageBox.warning(self, "GeoOBIA",
+                                f"Failed to load labels:\n{msg}")
 
     # --- Gallery interactions ---
 
@@ -317,8 +383,14 @@ class SegmentationPanel(QWidget):
         if row < 0 or row >= len(self.state.seg_runs):
             return
 
-        # Remove the run
-        self.state.seg_runs.pop(row)
+        # Remove the run and clean up temp file
+        run = self.state.seg_runs.pop(row)
+        if run.raster_path:
+            try:
+                os.remove(run.raster_path)
+                log(f"Deleted temp file: {run.raster_path}")
+            except OSError:
+                pass
         self._gallery_list.takeItem(row)
 
         # Adjust active index

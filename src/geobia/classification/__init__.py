@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 
 from geobia.classification.base import BaseClassifier
@@ -15,6 +17,7 @@ def classify(
     features: pd.DataFrame,
     method: str = "random_forest",
     training_labels: pd.Series | None = None,
+    progress: Any | None = None,
     **params,
 ) -> pd.Series:
     """Convenience function to classify segments.
@@ -24,14 +27,18 @@ def classify(
         method: Classification method name.
         training_labels: Required for supervised methods. Series mapping
             segment_id -> class_label.
+        progress: Optional callable(percent: float) for progress reporting.
         **params: Algorithm-specific parameters.
 
     Returns:
         Series with predicted labels (segment_id index).
     """
+    _report = progress or (lambda p: None)
+
     unsupervised_methods = ("kmeans", "gmm", "dbscan")
     supervised_methods = ("random_forest", "svm", "gradient_boosting")
 
+    _report(10)
     if method in unsupervised_methods:
         clf = UnsupervisedClassifier(algorithm=method, **params)
         clf.fit(features)
@@ -46,7 +53,10 @@ def classify(
         clf = SupervisedClassifier(algorithm=method, **params)
         clf.fit(features, training_labels)
 
-    return clf.predict(features)
+    _report(70)
+    result = clf.predict(features)
+    _report(100)
+    return result
 
 
 __all__ = [

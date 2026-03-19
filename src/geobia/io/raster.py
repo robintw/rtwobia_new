@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Generator
 from typing import Any
 
@@ -82,6 +83,19 @@ def write_raster(
 
     bands, height, width = data.shape
     out_dtype = dtype or str(data.dtype)
+
+    if meta.get("crs") is None:
+        warnings.warn(
+            f"Writing {path} without a CRS — the output GeoTIFF will "
+            f"have no coordinate reference system.",
+            stacklevel=2,
+        )
+    if meta.get("transform") is None:
+        warnings.warn(
+            f"Writing {path} without a geotransform — the output GeoTIFF "
+            f"will have no georeferencing.",
+            stacklevel=2,
+        )
 
     profile = {
         "driver": "GTiff",

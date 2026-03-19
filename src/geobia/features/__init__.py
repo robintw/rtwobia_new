@@ -25,6 +25,7 @@ def extract(
     image: np.ndarray,
     labels: np.ndarray,
     categories: list[str] | None = None,
+    progress: Any | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Extract features using one or more extractors and merge results.
@@ -33,24 +34,30 @@ def extract(
         image: Multi-band array (bands, height, width).
         labels: Segment label array (height, width).
         categories: List of extractor names to use. Defaults to all available.
-        **kwargs: Passed to extractors (e.g., band_names, pixel_size).
+        progress: Optional callable(percent: float) for progress reporting.
+        **kwargs: Passed to extractors (e.g., band_names, pixel_size, nodata).
 
     Returns:
         Merged DataFrame with segment_id as index.
     """
+    _report = progress or (lambda p: None)
+
     if categories is None:
         categories = list(_REGISTRY.keys())
 
     frames = []
-    for cat in categories:
+    n_cats = len(categories)
+    for i, cat in enumerate(categories):
         cat = cat.lower()
         if cat not in _REGISTRY:
             raise ValueError(f"Unknown feature category: {cat!r}. Available: {list(_REGISTRY)}")
 
         # Route kwargs to the right extractor
         extractor = _create_extractor(cat, **kwargs)
-        df = extractor.extract(image, labels)
+        df = extractor.extract(image, labels, **{k: v for k, v in kwargs.items()
+                                                  if k == "nodata"})
         frames.append(df)
+        _report((i + 1) / n_cats * 100)
 
     if not frames:
         return pd.DataFrame()

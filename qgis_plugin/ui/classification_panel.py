@@ -38,6 +38,8 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 
+from qgis.PyQt.QtWidgets import QFileDialog
+
 from .sample_selector import SampleSelectorTool
 from .schema_widgets import build_param_widgets, collect_param_values, create_param_group
 
@@ -63,6 +65,7 @@ class ClassificationPanel(QWidget):
         self.state = state
         self._sample_tool = None
         self._samples_layer = None
+        self._trained_classifier = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -73,6 +76,11 @@ class ClassificationPanel(QWidget):
         self._tabs.addTab(self._build_supervised_tab(), "Supervised")
         self._tabs.addTab(self._build_unsupervised_tab(), "Unsupervised")
         layout.addWidget(self._tabs)
+
+        # Progress
+        from .tasks import TaskProgressWidget
+        self._progress = TaskProgressWidget()
+        layout.addWidget(self._progress)
 
         # Status
         self._status = QLabel("")
@@ -165,6 +173,30 @@ class ClassificationPanel(QWidget):
         train_btn.clicked.connect(self._on_train)
         action_row.addWidget(train_btn)
         layout.addLayout(action_row)
+
+        # Feature importance (shown after training tree-based models)
+        self._importance_group = QGroupBox("Feature Importance (top 10)")
+        imp_layout = QVBoxLayout()
+        self._importance_table = QTableWidget(0, 2)
+        self._importance_table.setHorizontalHeaderLabels(["Feature", "Importance"])
+        self._importance_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch)
+        imp_layout.addWidget(self._importance_table)
+        self._importance_group.setLayout(imp_layout)
+        self._importance_group.hide()
+        layout.addWidget(self._importance_group)
+
+        # Model save/load
+        model_row = QHBoxLayout()
+        save_btn = QPushButton("Save Model...")
+        save_btn.setToolTip("Save the trained model to disk")
+        save_btn.clicked.connect(self._on_save_model)
+        model_row.addWidget(save_btn)
+        load_btn = QPushButton("Load Model...")
+        load_btn.setToolTip("Load a previously saved model and predict")
+        load_btn.clicked.connect(self._on_load_model)
+        model_row.addWidget(load_btn)
+        layout.addLayout(model_row)
 
         tab.setLayout(layout)
         return tab
@@ -462,6 +494,78 @@ class ClassificationPanel(QWidget):
             except (RuntimeError, Exception):
                 pass
 
+    def _show_feature_importance(self, clf):
+        """Show top-10 feature importances if the model supports it."""
+        try:
+            importance = clf.feature_importance()
+        except (NotImplementedError, RuntimeError):
+            self._importance_group.hide()
+            return
+
+        top = importance.head(10)
+        self._importance_table.setRowCount(0)
+        for name, val in top.items():
+            row = self._importance_table.rowCount()
+            self._importance_table.insertRow(row)
+            self._importance_table.setItem(row, 0, QTableWidgetItem(str(name)))
+            self._importance_table.setItem(row, 1, QTableWidgetItem(f"{val:.4f}"))
+        self._importance_group.show()
+
+    # ---- Model save/load ----
+
+    def _on_save_model(self):
+        if not hasattr(self, '_trained_classifier') or self._trained_classifier is None:
+            QMessageBox.warning(self, "GeoOBIA", "No trained model to save. Run Train & Predict first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Model", "", "Joblib model (*.joblib)")
+        if not path:
+            return
+        try:
+            self._trained_classifier.save(path)
+            self._status.setText(f"Model saved to {path}")
+            log(f"Model saved: {path}")
+        except Exception as e:
+            log(f"Save model FAILED: {traceback.format_exc()}", Qgis.Critical)
+            QMessageBox.warning(self, "GeoOBIA", f"Failed to save model: {e}")
+
+    def _on_load_model(self):
+        if self.state.features_df is None:
+            QMessageBox.warning(self, "GeoOBIA", "Extract features first.")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Model", "", "Joblib model (*.joblib)")
+        if not path:
+            return
+        try:
+            from geobia.classification.supervised import SupervisedClassifier
+            clf = SupervisedClassifier.load(path)
+            self._trained_classifier = clf
+            predictions = clf.predict(self.state.features_df)
+            self.state.predictions = predictions
+            n_classes = predictions.nunique()
+            self._status.setText(f"Loaded model: {n_classes} classes predicted.")
+            log(f"Model loaded from {path}, {n_classes} classes")
+            self._auto_show_results()
+        except Exception as e:
+            log(f"Load model FAILED: {traceback.format_exc()}", Qgis.Critical)
+            QMessageBox.warning(self, "GeoOBIA", f"Failed to load model: {e}")
+
+    def _auto_show_results(self):
+        """Auto-show classification results on the map and refresh Results panel."""
+        # Find the Results panel sibling in the tab widget
+        parent_tabs = self.parent()
+        if parent_tabs is None:
+            return
+        # Look through tabs for the ResultsPanel
+        from .results_panel import ResultsPanel
+        for i in range(parent_tabs.count()):
+            widget = parent_tabs.widget(i)
+            if isinstance(widget, ResultsPanel):
+                widget._refresh()
+                widget._apply_visualization()
+                break
+
     # ---- Training / Prediction ----
 
     def _get_sup_method_and_params(self):
@@ -499,20 +603,25 @@ class ClassificationPanel(QWidget):
             dict(self.state.training_samples), name="class_label")
 
         def work(set_progress, is_canceled):
-            from geobia.classification import classify
+            from geobia.classification.supervised import SupervisedClassifier
             set_progress(5)
-            predictions = classify(
-                features, method=method,
-                training_labels=training_labels,
-                **params)
+            clf = SupervisedClassifier(algorithm=method, **params)
+            clf.fit(features, training_labels)
+            set_progress(50)
+            predictions = clf.predict(features)
             set_progress(100)
-            return predictions
+            return {"predictions": predictions, "classifier": clf}
 
-        def on_success(predictions):
+        def on_success(result):
+            predictions = result["predictions"]
+            self._trained_classifier = result["classifier"]
             self.state.predictions = predictions
             n_classes = predictions.nunique()
             self._status.setText(f"Classification done: {n_classes} classes.")
             log(f"Train done: {n_classes} classes, {len(predictions)} segments")
+            self._show_feature_importance(result["classifier"])
+            # Auto-show results on the map
+            self._auto_show_results()
 
         def on_failure(error_msg):
             log(f"Train FAILED:\n{error_msg}", Qgis.Critical)
@@ -525,7 +634,7 @@ class ClassificationPanel(QWidget):
             f"GeoOBIA: {method} classification",
             work, on_success, on_failure,
         )
-        run_task(self, task)
+        run_task(self, task, progress_widget=self._progress)
 
     def _on_cluster(self):
         if self.state.features_df is None:
@@ -555,6 +664,8 @@ class ClassificationPanel(QWidget):
             n_classes = predictions.nunique()
             self._status.setText(f"Clustering done: {n_classes} clusters.")
             log(f"Cluster done: {n_classes} clusters, {len(predictions)} segments")
+            # Auto-show results on the map
+            self._auto_show_results()
 
         def on_failure(error_msg):
             log(f"Cluster FAILED:\n{error_msg}", Qgis.Critical)
@@ -567,4 +678,4 @@ class ClassificationPanel(QWidget):
             f"GeoOBIA: {method} clustering",
             work, on_success, on_failure,
         )
-        run_task(self, task)
+        run_task(self, task, progress_widget=self._progress)

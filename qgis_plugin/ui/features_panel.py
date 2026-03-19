@@ -97,6 +97,11 @@ class FeaturesPanel(QWidget):
         self._extract_btn.clicked.connect(self._on_extract)
         layout.addWidget(self._extract_btn)
 
+        # Progress
+        from .tasks import TaskProgressWidget
+        self._progress = TaskProgressWidget()
+        layout.addWidget(self._progress)
+
         # Status
         self._status = QLabel("")
         layout.addWidget(self._status)
@@ -152,33 +157,28 @@ class FeaturesPanel(QWidget):
         self._status.setText("Extracting features...")
         self._extract_btn.setEnabled(False)
 
-        # Read raster on GUI thread (QGIS layer access)
-        try:
-            from geobia.io.raster import read_raster
-            source = self.state.input_layer.source()
-            image, meta = read_raster(source)
-            log(f"Image: shape={image.shape}, dtype={image.dtype}")
-        except Exception:
-            msg = traceback.format_exc()
-            log(f"Read FAILED:\n{msg}", Qgis.Critical)
-            self._status.setText("Failed to read raster — see Log Messages.")
-            self._extract_btn.setEnabled(True)
-            return
-
-        labels = seg.labels_array
-        log(f"Labels: shape={labels.shape}, max={labels.max()}")
+        source = self.state.input_layer.source()
+        labels = seg.labels_array.copy()
+        seg_meta = seg.meta
 
         kwargs = {}
         if band_names_str:
             names = [n.strip() for n in band_names_str.split(",")]
             kwargs["band_names"] = {name: i for i, name in enumerate(names)}
 
-        pixel_size = abs(meta["transform"].a) if meta.get("transform") else None
-        if pixel_size:
-            kwargs["pixel_size"] = pixel_size
-
         def work(set_progress, is_canceled):
+            from geobia.io.raster import read_raster
             from geobia.features import extract
+
+            set_progress(2)
+            image, meta = read_raster(source)
+            log(f"Image: shape={image.shape}, dtype={image.dtype}")
+            log(f"Labels: shape={labels.shape}, max={labels.max()}")
+
+            pixel_size = abs(meta["transform"].a) if meta.get("transform") else None
+            if pixel_size:
+                kwargs["pixel_size"] = pixel_size
+
             set_progress(5)
             features = extract(image, labels, categories=categories, **kwargs)
             set_progress(100)
@@ -207,7 +207,7 @@ class FeaturesPanel(QWidget):
             "GeoOBIA: Feature extraction",
             work, on_success, on_failure,
         )
-        run_task(self, task)
+        run_task(self, task, progress_widget=self._progress)
 
     def _update_features_layer(self, seg, features_df):
         """Create/replace a vector layer with all extracted feature attributes.

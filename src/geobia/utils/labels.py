@@ -28,13 +28,19 @@ def relabel_sequential(labels: np.ndarray) -> np.ndarray:
     """Relabel segments to sequential IDs starting from 1.
 
     Preserves 0 as nodata. Returns a new array.
+    Uses a vectorized lookup table for O(n) performance.
     """
-    out = np.zeros_like(labels)
+    max_label = int(labels.max())
+    if max_label == 0:
+        return np.zeros_like(labels)
+
+    # Build a lookup table: old_id -> new_id
+    lut = np.zeros(max_label + 1, dtype=labels.dtype)
     unique_ids = np.unique(labels)
     unique_ids = unique_ids[unique_ids > 0]
-    for new_id, old_id in enumerate(unique_ids, start=1):
-        out[labels == old_id] = new_id
-    return out
+    lut[unique_ids] = np.arange(1, len(unique_ids) + 1, dtype=labels.dtype)
+
+    return lut[labels]
 
 
 def get_segment_slices(labels: np.ndarray) -> dict[int, tuple[slice, slice]]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from geobia.classification.base import BaseClassifier
@@ -25,6 +26,7 @@ class SupervisedClassifier(BaseClassifier):
         self.model_ = None
         self.feature_names_ = None
         self.classes_ = None
+        self.scaler_ = None  # StandardScaler for SVM
 
         self.model_ = self._create_model()
 
@@ -79,28 +81,48 @@ class SupervisedClassifier(BaseClassifier):
         y = labels.loc[common]
 
         self.feature_names_ = list(X.columns)
-        self.model_.fit(X.values, y.values)
+        X_vals = X.values
+        if self.algorithm == "svm":
+            self.scaler_ = StandardScaler()
+            X_vals = self.scaler_.fit_transform(X_vals)
+        self.model_.fit(X_vals, y.values)
         self.classes_ = list(self.model_.classes_)
 
     def predict(self, features: pd.DataFrame) -> pd.Series:
         if self.feature_names_ is None:
             raise RuntimeError("Classifier has not been trained")
         X = features[self.feature_names_]
-        preds = self.model_.predict(X.values)
+        X_vals = X.values
+        if self.scaler_ is not None:
+            X_vals = self.scaler_.transform(X_vals)
+        preds = self.model_.predict(X_vals)
         return pd.Series(preds, index=features.index, name="class_label")
 
     def predict_proba(self, features: pd.DataFrame) -> pd.DataFrame:
         if self.feature_names_ is None:
             raise RuntimeError("Classifier has not been trained")
         X = features[self.feature_names_]
-        proba = self.model_.predict_proba(X.values)
+        X_vals = X.values
+        if self.scaler_ is not None:
+            X_vals = self.scaler_.transform(X_vals)
+        proba = self.model_.predict_proba(X_vals)
         columns = [f"prob_{c}" for c in self.classes_]
         return pd.DataFrame(proba, index=features.index, columns=columns)
 
     def feature_importance(self) -> pd.Series:
-        """Return feature importance from the trained model."""
+        """Return feature importance from the trained model.
+
+        For tree-based models (Random Forest, Gradient Boosting) returns
+        built-in feature importances. SVM does not provide feature importances;
+        raises NotImplementedError in that case.
+        """
         if self.feature_names_ is None:
             raise RuntimeError("Classifier has not been trained")
+        if not hasattr(self.model_, "feature_importances_"):
+            raise NotImplementedError(
+                f"Feature importance is not available for '{self.algorithm}'. "
+                f"Use a tree-based algorithm (random_forest, gradient_boosting)."
+            )
         importances = self.model_.feature_importances_
         return pd.Series(importances, index=self.feature_names_, name="importance").sort_values(
             ascending=False

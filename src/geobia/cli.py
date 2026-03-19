@@ -67,7 +67,7 @@ def segment(input_image, output, method, n_segments, compactness, scale, min_siz
         labels = do_segment(image, method=method, **params)
         write_raster(output, labels, meta, dtype="int32")
 
-    n = len(set(labels.flat)) - (1 if 0 in labels else 0)
+    n = int(labels.max())
     click.echo(f"Done. {n} segments written to {output}")
 
 
@@ -170,8 +170,20 @@ def classify(features_file, output, method, training, segments, n_clusters, n_es
 
     if output.endswith(".parquet"):
         result.to_parquet(output)
+    elif output.endswith(".gpkg"):
+        from geobia.io.raster import read_raster as _rr
+        from geobia.utils.vectorize import vectorize_labels
+
+        seg_arr, seg_meta = _rr(segments)
+        crs = seg_meta.get("crs")
+        gdf = vectorize_labels(seg_arr[0], seg_meta["transform"], crs)
+        # Join features + predictions onto the GeoDataFrame
+        gdf = gdf.set_index("segment_id")
+        gdf = gdf.join(result, how="left")
+        gdf.reset_index(inplace=True)
+        gdf.to_file(output, driver="GPKG")
     else:
-        result.to_csv(output.replace(".gpkg", ".csv"))
+        result.to_csv(output)
 
     click.echo(f"Done. {len(predictions)} segments classified -> {output}")
 

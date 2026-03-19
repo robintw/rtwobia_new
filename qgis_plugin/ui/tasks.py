@@ -15,6 +15,7 @@ Progress is shown via QGIS's message bar.
 import traceback
 
 from qgis.PyQt.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from qgis.PyQt.QtWidgets import QHBoxLayout, QProgressBar, QPushButton, QWidget
 from qgis.core import QgsMessageLog, Qgis
 
 TAG = "GeoOBIA"
@@ -114,14 +115,69 @@ class BackgroundTask:
                 f"{self.description}... {int(percent)}%")
 
 
-def run_task(owner, task):
+class TaskProgressWidget(QWidget):
+    """Inline progress bar with cancel button for embedding in panels.
+
+    Usage:
+        self._progress_widget = TaskProgressWidget()
+        layout.addWidget(self._progress_widget)
+        # When starting a task:
+        run_task(self, task, progress_widget=self._progress_widget)
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
+        self._bar.setTextVisible(True)
+        layout.addWidget(self._bar)
+
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setFixedWidth(60)
+        layout.addWidget(self._cancel_btn)
+
+        self.setLayout(layout)
+        self.hide()
+
+        self._task = None
+        self._cancel_btn.clicked.connect(self._on_cancel)
+
+    def bind(self, task):
+        """Bind to a BackgroundTask and show the widget."""
+        self._task = task
+        self._bar.setValue(0)
+        self.show()
+        task._worker.progress.connect(self._on_progress)
+        task._worker.finished.connect(self._on_done)
+        task._worker.failed.connect(self._on_done)
+
+    def _on_progress(self, percent):
+        self._bar.setValue(int(percent))
+
+    def _on_cancel(self):
+        if self._task:
+            self._task.cancel()
+
+    def _on_done(self, _=None):
+        self.hide()
+        self._task = None
+
+
+def run_task(owner, task, progress_widget=None):
     """Start a BackgroundTask, storing references on owner to prevent GC.
 
     Args:
         owner: Any object with a persistent lifetime (e.g. a panel widget).
             Must have an `iface` attribute for status bar progress.
         task: BackgroundTask instance.
+        progress_widget: Optional TaskProgressWidget for inline progress.
     """
     owner._active_task = task
+    if progress_widget is not None:
+        progress_widget.bind(task)
     iface = getattr(owner, "iface", None)
     task.start(iface)

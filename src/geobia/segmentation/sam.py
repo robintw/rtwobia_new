@@ -83,10 +83,14 @@ class SAMSegmenter(BaseSegmenter):
             else:
                 rgb = rgb.clip(0, 255).astype(np.uint8)
 
+        sam_kwargs = {}
+        if self.device is not None:
+            sam_kwargs["device"] = self.device
+
         sam = SamGeo(
             model_type=self.model_type,
             automatic=True,
-            device=self.device,
+            **sam_kwargs,
         )
 
         sam.generate(
@@ -94,6 +98,10 @@ class SAMSegmenter(BaseSegmenter):
             output=None,
             foreground=True,
             unique=True,
+            points_per_side=self.points_per_side,
+            pred_iou_thresh=self.pred_iou_thresh,
+            stability_score_thresh=self.stability_score_thresh,
+            min_mask_region_area=self.min_mask_region_area,
         )
 
         # Extract masks and build label array

@@ -10,8 +10,8 @@ from qgis.core import (
     QgsProcessingParameterVectorLayer,
 )
 
-METHODS = ["random_forest", "kmeans", "gmm", "dbscan"]
-SUPERVISED_METHODS = {"random_forest"}
+METHODS = ["random_forest", "svm", "gradient_boosting", "kmeans", "gmm", "dbscan"]
+SUPERVISED_METHODS = {"random_forest", "svm", "gradient_boosting"}
 
 
 class ClassificationAlgorithm(QgsProcessingAlgorithm):
@@ -39,7 +39,8 @@ class ClassificationAlgorithm(QgsProcessingAlgorithm):
     def shortHelpString(self):
         return (
             "Classify segments using their extracted features.\n\n"
-            "Supervised methods (Random Forest) require training samples.\n"
+            "Supervised methods (Random Forest, SVM, Gradient Boosting) "
+            "require training samples.\n"
             "Unsupervised methods (K-Means, GMM, DBSCAN) cluster automatically."
         )
 

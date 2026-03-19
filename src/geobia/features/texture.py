@@ -87,8 +87,11 @@ class TextureExtractor(BaseExtractor):
             row = []
             for b in band_indices:
                 patch = quantized[b][row_slice, col_slice].copy()
-                # Mask non-segment pixels to 0 and exclude from GLCM
-                patch[~seg_mask] = 0
+                # Replace non-segment pixels with a value outside the GLCM
+                # range so they don't contribute to co-occurrence counts.
+                # Use levels as the out-of-range value and allocate levels+1
+                # in the GLCM, then discard the extra row/column.
+                patch[~seg_mask] = self.levels
 
                 if seg_mask.sum() < 4:
                     # Too few pixels for meaningful GLCM
@@ -96,14 +99,23 @@ class TextureExtractor(BaseExtractor):
                     continue
 
                 try:
+                    # Use levels+1 so the out-of-range marker (self.levels)
+                    # gets its own bin, then slice it off before computing
+                    # properties so non-segment pixels don't bias the GLCM.
                     glcm = graycomatrix(
                         patch,
                         distances=self.distances,
                         angles=self.angles,
-                        levels=self.levels,
+                        levels=self.levels + 1,
                         symmetric=True,
-                        normed=True,
+                        normed=False,
                     )
+                    # Remove the extra row/column for out-of-range pixels
+                    glcm = glcm[: self.levels, : self.levels, :, :]
+                    # Normalize after removing the extra bin
+                    glcm_sum = glcm.sum(axis=(0, 1), keepdims=True)
+                    glcm_sum[glcm_sum == 0] = 1  # avoid division by zero
+                    glcm = glcm.astype(np.float64) / glcm_sum
 
                     for prop in self.PROPERTIES:
                         values = graycoprops(glcm, prop)

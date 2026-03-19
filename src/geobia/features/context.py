@@ -11,31 +11,52 @@ from geobia.features.base import BaseExtractor
 
 
 def _find_neighbors(labels: np.ndarray) -> dict[int, set[int]]:
-    """Find adjacent segment pairs by checking horizontal and vertical borders.
+    """Find adjacent segment pairs using vectorized numpy operations.
 
     Returns:
         Dict mapping segment_id -> set of neighbor segment_ids.
     """
     neighbors: dict[int, set[int]] = {}
-    h, w = labels.shape
 
-    # Horizontal adjacency
+    # Horizontal adjacency — vectorized extraction of border pairs
     diff_h = labels[:, :-1] != labels[:, 1:]
-    rows, cols = np.where(diff_h)
-    for r, c in zip(rows, cols):
-        a, b = int(labels[r, c]), int(labels[r, c + 1])
-        if a > 0 and b > 0:
-            neighbors.setdefault(a, set()).add(b)
-            neighbors.setdefault(b, set()).add(a)
+    rows_h, cols_h = np.where(diff_h)
+    if len(rows_h) > 0:
+        a_vals = labels[rows_h, cols_h]
+        b_vals = labels[rows_h, cols_h + 1]
+        # Filter out nodata (0)
+        valid = (a_vals > 0) & (b_vals > 0)
+        a_vals = a_vals[valid]
+        b_vals = b_vals[valid]
+        # Build unique pairs
+        pairs = np.column_stack([a_vals, b_vals])
+        # Also add reverse direction
+        pairs_rev = np.column_stack([b_vals, a_vals])
+        pairs = np.vstack([pairs, pairs_rev])
 
     # Vertical adjacency
     diff_v = labels[:-1, :] != labels[1:, :]
-    rows, cols = np.where(diff_v)
-    for r, c in zip(rows, cols):
-        a, b = int(labels[r, c]), int(labels[r + 1, c])
-        if a > 0 and b > 0:
-            neighbors.setdefault(a, set()).add(b)
-            neighbors.setdefault(b, set()).add(a)
+    rows_v, cols_v = np.where(diff_v)
+    if len(rows_v) > 0:
+        a_vals_v = labels[rows_v, cols_v]
+        b_vals_v = labels[rows_v + 1, cols_v]
+        valid_v = (a_vals_v > 0) & (b_vals_v > 0)
+        a_vals_v = a_vals_v[valid_v]
+        b_vals_v = b_vals_v[valid_v]
+        pairs_v = np.column_stack([a_vals_v, b_vals_v])
+        pairs_v_rev = np.column_stack([b_vals_v, a_vals_v])
+        v_pairs = np.vstack([pairs_v, pairs_v_rev])
+        if len(rows_h) > 0:
+            pairs = np.vstack([pairs, v_pairs])
+        else:
+            pairs = v_pairs
+    elif len(rows_h) == 0:
+        return neighbors
+
+    # Deduplicate and build dict
+    unique_pairs = np.unique(pairs, axis=0)
+    for a, b in unique_pairs:
+        neighbors.setdefault(int(a), set()).add(int(b))
 
     return neighbors
 
@@ -63,16 +84,21 @@ class ContextExtractor(BaseExtractor):
         n_bands = image.shape[0] if image.ndim == 3 else 1
         neighbors = _find_neighbors(labels)
 
-        # Pre-compute per-segment mean brightness per band
+        # Pre-compute per-segment mean brightness per band using scipy.ndimage
         seg_means: dict[int, np.ndarray] = {}
-        for sid in segment_ids:
-            mask = labels == sid
-            if image.ndim == 3:
-                seg_means[int(sid)] = np.array(
-                    [image[b][mask].mean() for b in range(n_bands)]
-                )
-            else:
-                seg_means[int(sid)] = np.array([image[mask].mean()])
+        if image.ndim == 3:
+            band_means = []
+            for b in range(n_bands):
+                means = nd_mean(image[b].astype(np.float64), labels, segment_ids)
+                band_means.append(np.asarray(means))
+            # band_means[b][i] = mean of band b for segment_ids[i]
+            for i, sid in enumerate(segment_ids):
+                seg_means[int(sid)] = np.array([band_means[b][i] for b in range(n_bands)])
+        else:
+            means = nd_mean(image.astype(np.float64), labels, segment_ids)
+            means = np.asarray(means)
+            for i, sid in enumerate(segment_ids):
+                seg_means[int(sid)] = np.array([means[i]])
 
         records = []
         for sid in segment_ids:

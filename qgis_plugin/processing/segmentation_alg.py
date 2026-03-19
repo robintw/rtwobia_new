@@ -8,7 +8,7 @@ from qgis.core import (
     QgsProcessingParameterRasterLayer,
 )
 
-METHODS = ["slic", "felzenszwalb", "shepherd"]
+METHODS = ["slic", "felzenszwalb", "shepherd", "watershed"]
 
 
 class SegmentationAlgorithm(QgsProcessingAlgorithm):
@@ -32,6 +32,10 @@ class SegmentationAlgorithm(QgsProcessingAlgorithm):
     MIN_N_PXLS = "MIN_N_PXLS"
     SAMPLING = "SAMPLING"
 
+    # Watershed
+    MARKERS = "MARKERS"
+    MIN_DISTANCE = "MIN_DISTANCE"
+
     def name(self):
         return "segment"
 
@@ -50,7 +54,8 @@ class SegmentationAlgorithm(QgsProcessingAlgorithm):
             "Algorithms:\n"
             "  - SLIC: superpixel clustering (fast, regular shapes)\n"
             "  - Felzenszwalb: graph-based adaptive segmentation\n"
-            "  - Shepherd: K-means seeded with iterative elimination"
+            "  - Shepherd: K-means seeded with iterative elimination\n"
+            "  - Watershed: gradient-based watershed from local minima"
         )
 
     def createInstance(self):
@@ -111,6 +116,17 @@ class SegmentationAlgorithm(QgsProcessingAlgorithm):
             type=QgsProcessingParameterNumber.Integer,
             defaultValue=100, minValue=1, optional=True))
 
+        # Watershed parameters
+        self.addParameter(QgsProcessingParameterNumber(
+            self.MARKERS, "Number of markers (Watershed)",
+            type=QgsProcessingParameterNumber.Integer,
+            defaultValue=500, minValue=1, optional=True))
+
+        self.addParameter(QgsProcessingParameterNumber(
+            self.MIN_DISTANCE, "Min distance between markers (Watershed)",
+            type=QgsProcessingParameterNumber.Integer,
+            defaultValue=10, minValue=1, optional=True))
+
         self.addParameter(QgsProcessingParameterRasterDestination(
             self.OUTPUT, "Output segment labels"))
 
@@ -139,6 +155,9 @@ class SegmentationAlgorithm(QgsProcessingAlgorithm):
             params["num_clusters"] = self.parameterAsInt(parameters, self.NUM_CLUSTERS, context)
             params["min_n_pxls"] = self.parameterAsInt(parameters, self.MIN_N_PXLS, context)
             params["sampling"] = self.parameterAsInt(parameters, self.SAMPLING, context)
+        elif method == "watershed":
+            params["markers"] = self.parameterAsInt(parameters, self.MARKERS, context)
+            params["min_distance"] = self.parameterAsInt(parameters, self.MIN_DISTANCE, context)
 
         feedback.pushInfo(f"Segmenting with {method}...")
         feedback.setProgress(10)

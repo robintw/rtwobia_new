@@ -5,6 +5,9 @@ from qgis.core import QgsProcessingProvider
 from .segmentation_alg import SegmentationAlgorithm
 from .features_alg import FeatureExtractionAlgorithm
 from .classification_alg import ClassificationAlgorithm
+from .batch_alg import BatchProcessingAlgorithm
+from .change_detection_alg import ChangeDetectionAlgorithm
+from .multiscale_alg import MultiscaleSegmentationAlgorithm
 
 
 class GeobiaProvider(QgsProcessingProvider):
@@ -22,3 +25,6 @@ class GeobiaProvider(QgsProcessingProvider):
         self.addAlgorithm(SegmentationAlgorithm())
         self.addAlgorithm(FeatureExtractionAlgorithm())
         self.addAlgorithm(ClassificationAlgorithm())
+        self.addAlgorithm(BatchProcessingAlgorithm())
+        self.addAlgorithm(ChangeDetectionAlgorithm())
+        self.addAlgorithm(MultiscaleSegmentationAlgorithm())

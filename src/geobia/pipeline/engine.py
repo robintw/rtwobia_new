@@ -73,13 +73,39 @@ class Pipeline:
         result.export("output.gpkg")
     """
 
+    _VALID_ORDER = {"segment": 0, "extract": 1, "classify": 2}
+
     def __init__(self, steps: list[tuple] | None = None):
         """
         Args:
             steps: List of (step_type, method_or_categories, params) tuples.
                 step_type is one of: "segment", "extract", "classify".
+
+        Raises:
+            ValueError: If steps are out of order or contain unknown types.
         """
         self.steps = steps or []
+        self._validate_steps()
+
+    def _validate_steps(self):
+        """Check that steps follow segment -> extract -> classify order."""
+        if not self.steps:
+            return
+        prev_order = -1
+        for step in self.steps:
+            step_type = step[0]
+            if step_type not in self._VALID_ORDER:
+                raise ValueError(
+                    f"Unknown pipeline step type: {step_type!r}. "
+                    f"Valid types: {list(self._VALID_ORDER)}"
+                )
+            order = self._VALID_ORDER[step_type]
+            if order < prev_order:
+                raise ValueError(
+                    f"Pipeline step '{step_type}' is out of order. "
+                    f"Steps must follow: segment -> extract -> classify."
+                )
+            prev_order = order
 
     def run(
         self,
