@@ -434,12 +434,80 @@ for step in prov["steps"]:
 
 ## Development
 
+### Setup
+
 ```bash
 git clone <repo-url>
 cd geobia
 uv sync
-uv run pytest tests/ -v
 ```
+
+### Running tests
+
+```bash
+# Run all fast tests (excludes slow, SPOT, and QGIS tests)
+uv run pytest tests/ -v -m "not spot_image and not slow and not qgis"
+
+# Run the full fast test suite (236 tests)
+uv run pytest tests/ -v
+
+# Run a single test file
+uv run pytest tests/test_features.py -v
+
+# Run a specific test
+uv run pytest tests/test_features.py::TestSpectralExtractor::test_extracts_mean_per_band -v
+```
+
+### Test markers
+
+Tests are tagged with pytest markers so you can include or exclude groups:
+
+| Marker | Description | When to use |
+|--------|-------------|-------------|
+| `slow` | Tests that take more than a few seconds | Skip during rapid iteration: `-m "not slow"` |
+| `spot_image` | Integration tests using a real SPOT satellite image | Requires `tests/data/SPOT_ROI.tif` (see below) |
+| `benchmark` | Performance benchmarks | Run separately: `-m benchmark` |
+| `qgis` | Tests for the QGIS Processing provider | Requires QGIS Python bindings installed |
+
+Combine markers with boolean expressions:
+
+```bash
+# Everything except slow and QGIS
+uv run pytest tests/ -m "not slow and not qgis"
+
+# Only SPOT integration tests
+uv run pytest tests/ -m spot_image
+```
+
+### SPOT integration test image
+
+The SPOT integration tests (`tests/test_spot_integration.py`) require a real SPOT satellite image at `tests/data/SPOT_ROI.tif`. This file is **not committed** to the repository (it is gitignored) because it is a 6.8 MB binary file.
+
+To run these tests, place a SPOT image at that path. The tests expect a multi-band GeoTIFF with a valid CRS. If the file is missing, the SPOT tests are automatically skipped.
+
+### Linting and formatting
+
+This project uses [ruff](https://docs.astral.sh/ruff/) for both linting and formatting:
+
+```bash
+# Check for lint errors
+uv run ruff check src/ tests/
+
+# Auto-fix lint errors where possible
+uv run ruff check src/ tests/ --fix
+
+# Format code
+uv run ruff format src/ tests/
+
+# Check formatting without changing files
+uv run ruff format src/ tests/ --check
+```
+
+The ruff configuration is in `pyproject.toml` and enables pycodestyle, pyflakes, isort, pyupgrade, flake8-bugbear, and flake8-simplify rules.
+
+### CI
+
+GitHub Actions runs lint checks and the full test suite on every push and pull request, across Python 3.10–3.13. See `.github/workflows/ci.yml`.
 
 ## License
 
