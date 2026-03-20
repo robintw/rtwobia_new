@@ -21,7 +21,7 @@ def segment_sizes(labels: np.ndarray) -> dict[int, int]:
         Dict mapping segment_id -> pixel count.
     """
     unique, counts = np.unique(labels, return_counts=True)
-    return {int(sid): int(cnt) for sid, cnt in zip(unique, counts) if sid > 0}
+    return {int(sid): int(cnt) for sid, cnt in zip(unique, counts, strict=False) if sid > 0}
 
 
 def relabel_sequential(labels: np.ndarray) -> np.ndarray:

@@ -11,8 +11,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from geobia.segmentation.base import BaseSegmenter
-
 
 @dataclass
 class SegmentationLevel:
@@ -92,10 +90,10 @@ class HierarchicalSegmentation:
 
         # Compute sizes
         fine_ids, fine_counts = np.unique(fine, return_counts=True)
-        fine_sizes = dict(zip(fine_ids.astype(int), fine_counts.astype(int)))
+        fine_sizes = dict(zip(fine_ids.astype(int), fine_counts.astype(int), strict=False))
 
         coarse_ids, coarse_counts = np.unique(coarse, return_counts=True)
-        coarse_sizes = dict(zip(coarse_ids.astype(int), coarse_counts.astype(int)))
+        coarse_sizes = dict(zip(coarse_ids.astype(int), coarse_counts.astype(int), strict=False))
 
         # Count siblings per parent
         from collections import Counter

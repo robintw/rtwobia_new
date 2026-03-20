@@ -55,7 +55,12 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "SIM108", # use ternary operator (often less readable)
+    "SIM116", # use dict lookup instead of if/elif — less readable for complex returns
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402"]  # module-level imports after logger setup
+"tests/test_qgis_processing.py" = ["E402"]  # imports after pytest.importorskip
 
 [tool.ruff.lint.isort]
 known-first-party = ["geobia"]

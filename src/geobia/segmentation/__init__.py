@@ -9,9 +9,9 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 from geobia.segmentation.base import BaseSegmenter
-from geobia.segmentation.slic import SLICSegmenter
 from geobia.segmentation.felzenszwalb import FelzenszwalbSegmenter
 from geobia.segmentation.shepherd import ShepherdSegmenter
+from geobia.segmentation.slic import SLICSegmenter
 from geobia.segmentation.watershed import WatershedSegmenter
 
 _REGISTRY: dict[str, type[BaseSegmenter]] = {
@@ -108,9 +108,9 @@ def segment_tiled(
     Returns:
         Full (height, width) label array.
     """
-    from geobia.io.raster import read_raster_windows, write_raster
-
     import rasterio
+
+    from geobia.io.raster import read_raster_windows, write_raster
 
     with rasterio.open(path) as ds:
         full_height = ds.height
@@ -126,7 +126,6 @@ def segment_tiled(
     result = np.zeros((full_height, full_width), dtype=np.int32)
     max_label = 0
     segmenter = create(method, **params)
-    step = tile_size - overlap
     logger.info(
         "Tiled segmentation: %dx%d, tile_size=%d, overlap=%d",
         full_width,
@@ -135,7 +134,7 @@ def segment_tiled(
         overlap,
     )
 
-    for tile, tile_meta, window in read_raster_windows(path, tile_size=tile_size, overlap=overlap):
+    for tile, _tile_meta, window in read_raster_windows(path, tile_size=tile_size, overlap=overlap):
         labels = segmenter.segment(tile)
 
         # Offset labels to be globally unique

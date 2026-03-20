@@ -70,7 +70,6 @@ class TextureExtractor(BaseExtractor):
             quantized[b] = np.clip(scaled, 0, self.levels - 1).astype(np.uint8)
 
         # Get bounding slices for each segment
-        max_label = int(labels.max())
         slices = find_objects(labels)
 
         # Build feature columns

@@ -1,6 +1,5 @@
 """Tests for batch processing."""
 
-import numpy as np
 import pytest
 import rasterio
 
@@ -133,7 +132,7 @@ def test_batch_progress_callback(batch_rasters, tmp_path):
     )
     output_dir = str(tmp_path / "output")
     progress_calls = []
-    results = process_batch(
+    process_batch(
         batch_rasters,
         output_dir,
         pipeline=pipeline,

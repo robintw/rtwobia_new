@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from geobia.segmentation import create, segment, list_methods
-from geobia.segmentation.slic import SLICSegmenter
+from geobia.segmentation import create, list_methods, segment
 from geobia.segmentation.felzenszwalb import FelzenszwalbSegmenter
 from geobia.segmentation.shepherd import ShepherdSegmenter
+from geobia.segmentation.slic import SLICSegmenter
 
 
 class TestSLICSegmenter:
@@ -77,7 +77,7 @@ class TestShepherdSegmenter:
 
         sizes = segment_sizes(labels)
         # All segments should be >= min_n_pxls (or close to it)
-        for sid, count in sizes.items():
+        for _sid, count in sizes.items():
             assert count >= 10  # may not reach exact min_n_pxls due to algorithm behaviour
 
     def test_get_params(self):
