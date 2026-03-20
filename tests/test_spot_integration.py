@@ -6,32 +6,30 @@ so they can be excluded:
 
     pytest tests/ -v -m "not spot_image"      # skip SPOT tests
     pytest tests/ -v -m "spot_image"           # run SPOT tests only
+
+The SPOT_ROI.tif file is automatically downloaded on first run by the
+``spot_path`` fixture in conftest.py and cached in tests/data/.
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-SPOT_PATH = Path(__file__).parent / "data" / "SPOT_ROI.tif"
-SPOT_AVAILABLE = SPOT_PATH.exists()
-
 pytestmark = [
     pytest.mark.spot_image,
     pytest.mark.slow,
-    pytest.mark.skipif(not SPOT_AVAILABLE, reason="SPOT_ROI.tif not found in tests/data/"),
 ]
 
 
 @pytest.fixture(scope="module")
-def spot_image():
+def spot_image(spot_path):
     from geobia.io.raster import read_raster
 
-    image, meta = read_raster(str(SPOT_PATH))
+    image, meta = read_raster(str(spot_path))
     return image, meta
 
 

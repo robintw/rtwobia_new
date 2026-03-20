@@ -481,9 +481,9 @@ uv run pytest tests/ -m spot_image
 
 ### SPOT integration test image
 
-The SPOT integration tests (`tests/test_spot_integration.py`) require a real SPOT satellite image at `tests/data/SPOT_ROI.tif`. This file is **not committed** to the repository (it is gitignored) because it is a 6.8 MB binary file.
+The SPOT integration tests (`tests/test_spot_integration.py`) use a real 6.8 MB SPOT satellite image. The file is **not committed** to the repository (it is gitignored) but is **automatically downloaded** on first run from `https://rtwilson.com/downloads/SPOT_ROI.tif` and cached at `tests/data/SPOT_ROI.tif`.
 
-To run these tests, place a SPOT image at that path. The tests expect a multi-band GeoTIFF with a valid CRS. If the file is missing, the SPOT tests are automatically skipped.
+If the download fails (e.g. no network), the SPOT tests are skipped.
 
 ### Linting and formatting
 

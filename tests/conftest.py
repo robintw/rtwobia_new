@@ -2,11 +2,40 @@
 
 from __future__ import annotations
 
+import logging
+import urllib.request
+from pathlib import Path
+
 import numpy as np
 import pytest
 import rasterio
 from rasterio.crs import CRS
 from rasterio.transform import from_bounds
+
+logger = logging.getLogger(__name__)
+
+SPOT_URL = "https://rtwilson.com/downloads/SPOT_ROI.tif"
+SPOT_PATH = Path(__file__).parent / "data" / "SPOT_ROI.tif"
+
+
+@pytest.fixture(scope="session")
+def spot_path():
+    """Return path to SPOT_ROI.tif, downloading it if not already cached.
+
+    The file is stored in tests/data/ (gitignored) and reused across runs.
+    Tests that need this fixture will fail with a skip if the download fails.
+    """
+    if SPOT_PATH.exists():
+        return SPOT_PATH
+
+    SPOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Downloading SPOT_ROI.tif from %s ...", SPOT_URL)
+    try:
+        urllib.request.urlretrieve(SPOT_URL, SPOT_PATH)
+    except Exception as exc:
+        pytest.skip(f"Could not download SPOT_ROI.tif: {exc}")
+
+    return SPOT_PATH
 
 
 @pytest.fixture
