@@ -1,7 +1,17 @@
 """Feature extraction configuration panel."""
 
-import traceback
-
+from qgis.core import (
+    Qgis,
+    QgsFeature,
+    QgsField,
+    QgsGeometry,
+    QgsMessageLog,
+    QgsProject,
+    QgsSimpleFillSymbolLayer,
+    QgsSingleSymbolRenderer,
+    QgsSymbol,
+    QgsVectorLayer,
+)
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
@@ -14,18 +24,6 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
-)
-from qgis.core import (
-    QgsFeature,
-    QgsField,
-    QgsGeometry,
-    QgsMessageLog,
-    QgsProject,
-    QgsSimpleFillSymbolLayer,
-    QgsSingleSymbolRenderer,
-    QgsSymbol,
-    QgsVectorLayer,
-    Qgis,
 )
 
 TAG = "GeoOBIA"
@@ -68,7 +66,9 @@ class FeaturesPanel(QWidget):
         self._geometry_cb.setChecked(True)
         cat_layout.addWidget(self._geometry_cb)
 
-        self._texture_cb = QCheckBox("Texture (GLCM: contrast, dissimilarity, homogeneity, energy, correlation per band)")
+        self._texture_cb = QCheckBox(
+            "Texture (GLCM: contrast, dissimilarity, homogeneity, energy, correlation per band)"
+        )
         self._texture_cb.setChecked(False)
         cat_layout.addWidget(self._texture_cb)
 
@@ -86,7 +86,8 @@ class FeaturesPanel(QWidget):
         self._band_names_edit.setPlaceholderText("e.g. red, green, blue, nir")
         self._band_names_edit.setToolTip(
             "Comma-separated band names. Enables NDVI/NDWI ratio computation "
-            "when 'nir', 'red', 'green' are specified.")
+            "when 'nir', 'red', 'green' are specified."
+        )
         band_layout.addRow("Band names:", self._band_names_edit)
         band_group.setLayout(band_layout)
         layout.addWidget(band_group)
@@ -99,12 +100,24 @@ class FeaturesPanel(QWidget):
 
         # Progress
         from .tasks import TaskProgressWidget
+
         self._progress = TaskProgressWidget()
         layout.addWidget(self._progress)
 
         # Status
         self._status = QLabel("")
         layout.addWidget(self._status)
+
+        # Features Explorer (hidden until extraction completes)
+        from .feature_explorer import FeatureExplorerWidget
+
+        self._explorer = FeatureExplorerWidget(
+            self.iface,
+            self.state,
+            get_features_layer_fn=lambda: self._features_layer,
+        )
+        self._explorer.hide()
+        layout.addWidget(self._explorer)
 
         layout.addStretch()
         self.setLayout(layout)
@@ -119,8 +132,9 @@ class FeaturesPanel(QWidget):
         if seg is not None:
             self._seg_label.setText(f"Using: {seg.summary}")
         else:
-            self._seg_label.setText("No segmentation selected. "
-                                    "Use the Segmentation tab to run and activate one.")
+            self._seg_label.setText(
+                "No segmentation selected. Use the Segmentation tab to run and activate one."
+            )
 
     def _on_extract(self):
         self._update_seg_label()
@@ -128,9 +142,11 @@ class FeaturesPanel(QWidget):
         seg = self.state.active_seg
         if seg is None:
             QMessageBox.warning(
-                self, "GeoOBIA",
+                self,
+                "GeoOBIA",
                 "No active segmentation. Go to the Segmentation tab, "
-                "run a segmentation, and click 'Use for Extraction'.")
+                "run a segmentation, and click 'Use for Extraction'.",
+            )
             return
 
         if self.state.input_layer is None:
@@ -159,7 +175,6 @@ class FeaturesPanel(QWidget):
 
         source = self.state.input_layer.source()
         labels = seg.labels_array.copy()
-        seg_meta = seg.meta
 
         kwargs = {}
         if band_names_str:
@@ -167,8 +182,8 @@ class FeaturesPanel(QWidget):
             kwargs["band_names"] = {name: i for i, name in enumerate(names)}
 
         def work(set_progress, is_canceled):
-            from geobia.io.raster import read_raster
             from geobia.features import extract
+            from geobia.io.raster import read_raster
 
             set_progress(2)
             image, meta = read_raster(source)
@@ -192,20 +207,23 @@ class FeaturesPanel(QWidget):
             log(f"Extraction done: {n_feats} features x {n_segs} segments")
             log(f"Feature columns: {list(features.columns)}")
             self._update_features_layer(seg, features)
-            self._status.setText(
-                f"{n_feats} features extracted for {n_segs} segments.")
+            self._status.setText(f"{n_feats} features extracted for {n_segs} segments.")
+            self._explorer.update_features(features)
+            self._explorer.show()
 
         def on_failure(error_msg):
             self._extract_btn.setEnabled(True)
             log(f"Extract FAILED:\n{error_msg}", Qgis.Critical)
             self._status.setText("Feature extraction failed — see Log Messages.")
-            QMessageBox.warning(self, "GeoOBIA",
-                                f"Feature extraction failed:\n{error_msg}")
+            QMessageBox.warning(self, "GeoOBIA", f"Feature extraction failed:\n{error_msg}")
 
         from .tasks import BackgroundTask, run_task
+
         task = BackgroundTask(
             "GeoOBIA: Feature extraction",
-            work, on_success, on_failure,
+            work,
+            on_success,
+            on_failure,
         )
         run_task(self, task, progress_widget=self._progress)
 
@@ -223,8 +241,7 @@ class FeaturesPanel(QWidget):
         crs = seg.meta.get("crs")
         crs_str = str(crs) if crs else "EPSG:4326"
 
-        vlayer = QgsVectorLayer(
-            f"Polygon?crs={crs_str}", _FEATURES_LAYER_NAME, "memory")
+        vlayer = QgsVectorLayer(f"Polygon?crs={crs_str}", _FEATURES_LAYER_NAME, "memory")
         provider = vlayer.dataProvider()
 
         # Build fields: segment_id + all feature columns
@@ -281,8 +298,10 @@ class FeaturesPanel(QWidget):
         QgsProject.instance().addMapLayer(vlayer)
         self._features_layer = vlayer
         self.iface.mapCanvas().refresh()
-        log(f"Features layer added with {len(qgs_features)} features, "
-            f"{len(features_df.columns)} attributes")
+        log(
+            f"Features layer added with {len(qgs_features)} features, "
+            f"{len(features_df.columns)} attributes"
+        )
 
     def _remove_features_layer(self):
         """Remove the current features layer from the map."""
@@ -294,8 +313,8 @@ class FeaturesPanel(QWidget):
                 pass
             self._features_layer = None
         # Clean up any stale layers with our name
+        import contextlib
+
         for lyr in QgsProject.instance().mapLayersByName(_FEATURES_LAYER_NAME):
-            try:
+            with contextlib.suppress(Exception):
                 QgsProject.instance().removeMapLayer(lyr.id())
-            except Exception:
-                pass
