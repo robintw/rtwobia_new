@@ -1,10 +1,9 @@
 """Tests for watershed segmentation."""
 
 import numpy as np
-import pytest
 
+from geobia.segmentation import list_methods, segment
 from geobia.segmentation.watershed import WatershedSegmenter
-from geobia.segmentation import segment, list_methods
 
 
 def test_watershed_registered():

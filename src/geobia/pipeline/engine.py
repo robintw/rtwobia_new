@@ -257,7 +257,7 @@ class Pipeline:
         Path(path).write_text(self.to_json())
 
     @classmethod
-    def load_string(cls, json_string: str) -> "Pipeline":
+    def load_string(cls, json_string: str) -> Pipeline:
         """Load a pipeline definition from a JSON string."""
         definition = json.loads(json_string)
         steps = []
@@ -272,6 +272,6 @@ class Pipeline:
         return cls(steps)
 
     @classmethod
-    def load(cls, path: str | Path) -> "Pipeline":
+    def load(cls, path: str | Path) -> Pipeline:
         """Load a pipeline definition from a JSON file."""
         return cls.load_string(Path(path).read_text())

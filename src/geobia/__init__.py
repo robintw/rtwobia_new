@@ -18,13 +18,11 @@ from importlib.metadata import version as _pkg_version
 
 __version__ = _pkg_version("geobia")
 
-from geobia import io
+from geobia import batch, change, io
+from geobia.classification import classify
+from geobia.features import extract as extract_features
 from geobia.segmentation import segment, segment_tiled
 from geobia.segmentation.multiscale import segment_multiscale
-from geobia.features import extract as extract_features
-from geobia.classification import classify
-from geobia import change
-from geobia import batch
 
 __all__ = [
     "__version__",

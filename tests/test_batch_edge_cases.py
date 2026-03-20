@@ -1,7 +1,5 @@
 """Edge case tests for batch processing."""
 
-import numpy as np
-import pytest
 import rasterio
 
 from geobia.batch import BatchResult, batch_summary, process_batch

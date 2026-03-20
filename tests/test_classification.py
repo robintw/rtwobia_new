@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 
 from geobia.classification import classify
+from geobia.classification.accuracy import assess_accuracy
 from geobia.classification.supervised import SupervisedClassifier
 from geobia.classification.unsupervised import UnsupervisedClassifier
-from geobia.classification.accuracy import assess_accuracy, AccuracyReport
 
 
 @pytest.fixture

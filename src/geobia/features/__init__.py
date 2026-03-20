@@ -11,10 +11,10 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 from geobia.features.base import BaseExtractor
-from geobia.features.spectral import SpectralExtractor
-from geobia.features.geometry import GeometryExtractor
-from geobia.features.texture import TextureExtractor
 from geobia.features.context import ContextExtractor
+from geobia.features.geometry import GeometryExtractor
+from geobia.features.spectral import SpectralExtractor
+from geobia.features.texture import TextureExtractor
 
 _REGISTRY: dict[str, type[BaseExtractor]] = {
     "spectral": SpectralExtractor,

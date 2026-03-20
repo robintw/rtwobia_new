@@ -1,14 +1,13 @@
 """Edge case tests for feature extraction."""
 
 import numpy as np
-import pandas as pd
 import pytest
 
-from geobia.features.spectral import SpectralExtractor
-from geobia.features.geometry import GeometryExtractor
-from geobia.features.texture import TextureExtractor
-from geobia.features.context import ContextExtractor
 from geobia.features import extract
+from geobia.features.context import ContextExtractor
+from geobia.features.geometry import GeometryExtractor
+from geobia.features.spectral import SpectralExtractor
+from geobia.features.texture import TextureExtractor
 
 
 class TestSpectralEdgeCases:

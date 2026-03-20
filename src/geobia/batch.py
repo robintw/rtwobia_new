@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 __all__ = ["BatchResult", "process_batch", "batch_summary"]
@@ -41,8 +40,8 @@ def _process_single(
     import time
 
     try:
-        from geobia.pipeline import Pipeline
         from geobia.io.raster import write_raster
+        from geobia.pipeline import Pipeline
 
         pipeline = Pipeline.load_string(pipeline_json)
 

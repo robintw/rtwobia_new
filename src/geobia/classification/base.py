@@ -45,7 +45,7 @@ class BaseClassifier(ABC):
         joblib.dump(self._get_state(), path)
 
     @classmethod
-    def load(cls, path: str | Path) -> "BaseClassifier":
+    def load(cls, path: str | Path) -> BaseClassifier:
         """Load a trained model from disk.
 
         Raises:

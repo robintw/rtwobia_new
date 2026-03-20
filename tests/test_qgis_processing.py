@@ -10,7 +10,6 @@ with 'qgis' so they can be skipped in environments without QGIS:
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -21,7 +20,6 @@ from qgis.core import (
     QgsApplication,
     QgsProcessingContext,
     QgsProcessingFeedback,
-    QgsRasterLayer,
 )
 
 pytestmark = pytest.mark.qgis
@@ -60,8 +58,8 @@ def processing_feedback():
 def sample_raster(tmp_path):
     """Write a small 4-band raster to disk and return the path."""
     import rasterio
-    from rasterio.transform import from_bounds
     from rasterio.crs import CRS
+    from rasterio.transform import from_bounds
 
     path = str(tmp_path / "sample.tif")
     rng = np.random.RandomState(42)
@@ -297,8 +295,8 @@ class TestFeatureExtractionAlgorithmRun:
     def test_extract_spectral(
         self, sample_raster, tmp_path, processing_context, processing_feedback
     ):
-        from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
         from qgis_plugin.processing.features_alg import FeatureExtractionAlgorithm
+        from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
 
         # First segment
         seg_alg = SegmentationAlgorithm()
@@ -347,9 +345,9 @@ class TestClassificationAlgorithmRun:
     def test_unsupervised_kmeans(
         self, sample_raster, tmp_path, processing_context, processing_feedback
     ):
-        from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
-        from qgis_plugin.processing.features_alg import FeatureExtractionAlgorithm
         from qgis_plugin.processing.classification_alg import ClassificationAlgorithm
+        from qgis_plugin.processing.features_alg import FeatureExtractionAlgorithm
+        from qgis_plugin.processing.segmentation_alg import SegmentationAlgorithm
 
         # Segment
         seg_alg = SegmentationAlgorithm()

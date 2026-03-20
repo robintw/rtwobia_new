@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from geobia.classification.unsupervised import UnsupervisedClassifier
 from geobia.classification import classify
+from geobia.classification.unsupervised import UnsupervisedClassifier
 
 
 @pytest.fixture

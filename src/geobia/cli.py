@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 
 import click
@@ -87,7 +86,8 @@ def segment(
 ):
     """Segment an image into objects."""
     from geobia.io.raster import read_raster, write_raster
-    from geobia.segmentation import segment as do_segment, segment_tiled
+    from geobia.segmentation import segment as do_segment
+    from geobia.segmentation import segment_tiled
 
     params = {}
     if method == "slic":
@@ -156,8 +156,8 @@ def segment(
 )
 def extract(input_image, segments, output, spectral, geometry, texture, context, band_names):
     """Extract features from segmented image."""
-    from geobia.io.raster import read_raster
     from geobia.features import extract as do_extract
+    from geobia.io.raster import read_raster
 
     click.echo(f"Extracting features from {input_image}...")
 
@@ -227,6 +227,7 @@ def extract(input_image, segments, output, spectral, geometry, texture, context,
 def classify(features_file, output, method, training, segments, n_clusters, n_estimators):
     """Classify segments using their features."""
     import pandas as pd
+
     from geobia.classification import classify as do_classify
 
     click.echo(f"Classifying with {method}...")
@@ -351,6 +352,7 @@ def info(input_file):
 def export(segments, output, features, classification):
     """Export segments as vector with optional attributes."""
     import pandas as pd
+
     from geobia.io.raster import read_raster
     from geobia.io.vector import write_vector
 

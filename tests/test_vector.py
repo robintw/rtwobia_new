@@ -1,12 +1,11 @@
 """Tests for vector I/O module."""
 
-import numpy as np
+import geopandas as gpd
 import pandas as pd
 import pytest
-import geopandas as gpd
 from shapely.geometry import Point, box
 
-from geobia.io.vector import read_vector, write_vector, read_training_samples
+from geobia.io.vector import read_training_samples, read_vector, write_vector
 
 
 @pytest.fixture

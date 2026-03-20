@@ -4,10 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from geobia.segmentation import segment, list_methods
-from geobia.features import extract, list_categories
 from geobia.classification import classify
-
+from geobia.features import extract
+from geobia.segmentation import segment
 
 # --- Segmentation ---
 

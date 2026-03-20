@@ -1,10 +1,8 @@
 """Tests for the I/O layer."""
 
 import numpy as np
-import pytest
-import rasterio
 
-from geobia.io.raster import read_raster, write_raster, read_raster_windows
+from geobia.io.raster import read_raster, read_raster_windows, write_raster
 
 
 class TestReadRaster:

@@ -1,10 +1,9 @@
 """Tests for contextual feature extraction."""
 
 import numpy as np
-import pytest
 
-from geobia.features.context import ContextExtractor, _find_neighbors
 from geobia.features import extract
+from geobia.features.context import ContextExtractor, _find_neighbors
 
 
 def test_find_neighbors(synthetic_labels):

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import label as cc_label
-from scipy.ndimage import labeled_comprehension, mean as nd_mean
+from scipy.ndimage import mean as nd_mean
 
 from geobia.features.base import BaseExtractor
 

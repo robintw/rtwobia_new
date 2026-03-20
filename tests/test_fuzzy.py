@@ -1,11 +1,10 @@
 """Tests for fuzzy membership function classification."""
 
-import numpy as np
 import pandas as pd
 import pytest
 
-from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
 from geobia.classification import classify
+from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
 
 
 @pytest.fixture

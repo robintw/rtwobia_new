@@ -9,11 +9,11 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+from geobia.classification.accuracy import AccuracyReport, assess_accuracy, cross_validate
 from geobia.classification.base import BaseClassifier
+from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
 from geobia.classification.supervised import SupervisedClassifier
 from geobia.classification.unsupervised import UnsupervisedClassifier
-from geobia.classification.accuracy import AccuracyReport, assess_accuracy, cross_validate
-from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
 
 
 def classify(

@@ -1,11 +1,8 @@
 """Tests for multi-scale / hierarchical segmentation."""
 
 import numpy as np
-import pytest
 
 from geobia.segmentation.multiscale import (
-    HierarchicalSegmentation,
-    SegmentationLevel,
     segment_multiscale,
 )
 

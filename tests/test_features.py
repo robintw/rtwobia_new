@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from geobia.features import extract
-from geobia.features.spectral import SpectralExtractor
 from geobia.features.geometry import GeometryExtractor
+from geobia.features.spectral import SpectralExtractor
 
 
 class TestSpectralExtractor:

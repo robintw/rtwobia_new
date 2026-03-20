@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
 from skimage.filters import threshold_otsu
 
 __all__ = ["feature_difference", "change_magnitude", "detect_changes", "change_summary"]

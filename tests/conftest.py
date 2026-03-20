@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import rasterio
-from rasterio.transform import from_bounds
 from rasterio.crs import CRS
+from rasterio.transform import from_bounds
 
 
 @pytest.fixture

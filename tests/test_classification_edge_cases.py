@@ -4,10 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
 from geobia.classification.supervised import SupervisedClassifier
 from geobia.classification.unsupervised import UnsupervisedClassifier
-from geobia.classification.fuzzy import FuzzyClassifier, FuzzyRule
-from geobia.classification.base import BaseClassifier
 
 
 @pytest.fixture

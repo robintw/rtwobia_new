@@ -103,8 +103,8 @@ class TestSpotFeatureExtraction:
 
 class TestSpotClassification:
     def test_unsupervised_kmeans(self, spot_image, spot_slic_labels):
-        from geobia.features import extract
         from geobia.classification import classify
+        from geobia.features import extract
 
         image, meta = spot_image
         features = extract(image, spot_slic_labels)
@@ -113,8 +113,8 @@ class TestSpotClassification:
         assert predictions.nunique() == 5
 
     def test_supervised_random_forest(self, spot_image, spot_slic_labels):
-        from geobia.features import extract
         from geobia.classification import SupervisedClassifier, assess_accuracy
+        from geobia.features import extract
 
         image, meta = spot_image
         features = extract(image, spot_slic_labels)
@@ -148,8 +148,8 @@ class TestSpotClassification:
 
 class TestSpotExport:
     def test_export_vector(self, tmp_path, spot_image, spot_slic_labels):
-        from geobia.io.vector import write_vector
         from geobia.features import extract
+        from geobia.io.vector import write_vector
 
         image, meta = spot_image
         features = extract(image, spot_slic_labels)
@@ -159,9 +159,9 @@ class TestSpotExport:
         assert os.path.exists(output)
 
     def test_export_classified_raster(self, tmp_path, spot_image, spot_slic_labels):
-        from geobia.io.raster import write_raster
-        from geobia.features import extract
         from geobia.classification import classify
+        from geobia.features import extract
+        from geobia.io.raster import write_raster
 
         image, meta = spot_image
         features = extract(image, spot_slic_labels)
